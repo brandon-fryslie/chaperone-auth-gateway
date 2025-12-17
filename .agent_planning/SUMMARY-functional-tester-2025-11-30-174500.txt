@@ -1,0 +1,41 @@
+Agent: functional-tester | 2025-11-30 17:45:00
+Tests: 26 added (proxy_test.go) | Workflows: 5 covered
+Status: failing (as expected - no implementation) | Commit: pending
+Planning: STATUS/PLAN files consumed from PLAN-2025-11-28-172607.md
+
+Tests Added:
+1. TestProxyServerLifecycle (5 subtests) - Server start/stop/restart behaviors
+2. TestProxyCONNECTTunnel (6 subtests) - CONNECT method and tunnel establishment
+3. TestProxyConcurrentTunnels (3 subtests) - Multiple simultaneous tunnels
+4. TestProxyEndToEndHTTPS (3 subtests) - Complete HTTPS proxying workflow
+5. TestProxyPhase1CompletionChecklist (5 checks) - Meta-test for Phase 1 completion
+
+Workflows Covered:
+1. Server lifecycle (start on port, bind address, stop cleanly, restart, graceful shutdown)
+2. CONNECT tunnel (establish, bidirectional flow, error handling, timeouts, cleanup)
+3. Concurrent operations (same upstream, different upstreams, client isolation)
+4. End-to-end HTTPS (GET, POST with body, streaming response)
+5. Phase 1 completion (all acceptance criteria validated)
+
+Anti-Gaming Measures:
+- Tests start REAL proxy server on actual TCP port (observable network behavior)
+- Tests make REAL TCP connections to proxy (actual socket operations)
+- Tests verify ACTUAL data flows through tunnel (bytes sent/received match)
+- Tests use REAL HTTPS servers with TLS (not mocks)
+- Tests verify connection cleanup happens (goroutines exit, sockets close)
+- Tests measure REAL wall-clock time for timeout enforcement
+- Tests verify multiple concurrent tunnels work simultaneously (real parallelism)
+- Tests FAIL when proxy behavior is incorrect or missing
+
+Current Status: All tests skip or fail (as expected - no implementation exists)
+Next Step: Implement internal/proxy/server.go and internal/proxy/tunnel.go
+Validation: go test ./test -run TestProxy
+
+STATUS/PLAN Traceability:
+- Maps to PLAN-2025-11-28-172607.md Phase 1 work items:
+  * CHAP-jds: HTTP Proxy Server (tested by TestProxyServerLifecycle)
+  * CHAP-b2i: CONNECT Tunnel Handler (tested by TestProxyCONNECTTunnel)
+  * CHAP-4iy: Integration Test (TestProxyEndToEndHTTPS)
+  * CLI Integration: (will be validated once server works)
+
+No STATUS file found - tests written based on PLAN acceptance criteria alone.

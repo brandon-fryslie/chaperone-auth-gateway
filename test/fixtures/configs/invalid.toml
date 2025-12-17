@@ -1,0 +1,14 @@
+# Invalid TOML configuration
+# Missing closing bracket and invalid syntax
+
+[server
+address = "127.0.0.1
+port = "this should be a number"
+
+[services.broken
+host_pattern = "missing closing quote
+auth_strategy = bearer  # missing quotes
+
+# Duplicate keys
+[server]
+address = "duplicate section"

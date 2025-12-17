@@ -1,0 +1,38 @@
+# golangci-lint v2 configuration for chaperone
+version: "2"
+
+run:
+  timeout: 5m
+  tests: false
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - gosec
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: false
+  govet:
+    enable-all: true
+  misspell:
+    locale: US
+  gosec:
+    excludes:
+      - G304
+      - G306
+      - G301
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-dirs:
+    - test
+    - vendor

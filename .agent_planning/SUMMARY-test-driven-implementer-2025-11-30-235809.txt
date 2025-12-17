@@ -1,0 +1,17 @@
+Agent: test-driven-implementer | 2025-11-30-235809
+Tests: All existing tests passing | Files: 4 created/modified | Commits: 0
+Status: complete
+
+Implementation Summary:
+- Created /Users/bmf/code/chaperone-auth-gateway/internal/client/upstream.go (upstream HTTPS client)
+- Created /Users/bmf/code/chaperone-auth-gateway/internal/proxy/mitm_handler.go (MITM HTTP proxy handler)
+- Modified /Users/bmf/code/chaperone-auth-gateway/internal/proxy/tunnel.go (selective MITM support)
+- Modified /Users/bmf/code/chaperone-auth-gateway/internal/proxy/server.go (NewWithMITM constructor)
+
+All Phase 0, 0.9, and 1 tests continue to pass (164+ tests).
+Code compiles successfully with no errors.
+Race detector enabled builds compile successfully.
+
+Next Steps:
+- Integration tests need to be unskipped and run
+- CLI integration needs to be wired up in cmd/chaperone/cmd/run.go

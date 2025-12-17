@@ -1,0 +1,219 @@
+{
+  "phase": "0.3",
+  "phase_name": "Observability Foundation",
+  "test_file": "/Users/bmf/code/chaperone-auth-gateway/test/logging_test.go",
+  "documentation": "/Users/bmf/code/chaperone-auth-gateway/test/LOGGING_TESTS_README.md",
+  "tests_added": [
+    "TestLoggingFramework/request_id_generation_and_propagation",
+    "TestLoggingFramework/structured_logging_functions",
+    "TestLoggingFramework/json_output_format",
+    "TestLoggingFramework/field_redaction",
+    "TestLoggingFramework/log_duration",
+    "TestLoggingFramework/context_aware_logging",
+    "TestLoggingFramework/log_level_configuration",
+    "TestLoggingIntegrationScenario"
+  ],
+  "workflows_covered": [
+    "Request ID generation and uniqueness verification",
+    "Context-aware structured logging with JSON output",
+    "Field redaction for sensitive data (Authorization headers, secrets)",
+    "Operation duration measurement and logging",
+    "Log level configuration and filtering",
+    "Complete request processing with correlated logs"
+  ],
+  "initial_status": "failing",
+  "failure_mode": "compilation_errors",
+  "expected_errors": [
+    "undefined: log.WithRequestID",
+    "undefined: log.RequestID",
+    "undefined: log.SetLogger",
+    "undefined: log.Info",
+    "undefined: log.Error",
+    "undefined: log.Debug",
+    "undefined: log.LogDuration",
+    "undefined: log.FromContext",
+    "undefined: log.SetLevel"
+  ],
+  "gaming_resistance": "very_high",
+  "gaming_resistance_rationale": {
+    "real_output_capture": "Uses bytes.Buffer to capture actual log output, not mocks",
+    "json_validation": "Parses output with json.Unmarshal() which fails if invalid",
+    "time_measurement": "Uses real time.Sleep() and verifies elapsed duration",
+    "uniqueness_verification": "Generates 100 IDs and checks for duplicates using map",
+    "security_validation": "Logs actual secrets and verifies they don't appear in output",
+    "multiple_assertions": "Each test has 5+ assertions on different aspects",
+    "no_mocks": "Tests use real slog.Logger, real context, real measurements",
+    "integration_testing": "Tests interaction between features, not isolated units"
+  },
+  "status_gaps_addressed": [
+    "Observability missing from foundation (now tested as P0 requirement)",
+    "No structured logging framework (tests define complete contract)",
+    "Secrets potentially logged (redaction tests prevent this)"
+  ],
+  "plan_items_validated": [
+    {
+      "item_id": "CHAP-4an",
+      "name": "Phase 0.3: Observability Foundation",
+      "acceptance_criteria": [
+        "Logger outputs valid JSON",
+        "Request IDs are unique",
+        "Request ID propagates through context",
+        "Authorization headers redacted",
+        "Secrets never logged"
+      ],
+      "test_coverage": [
+        "testJSONOutputFormat validates JSON structure and parsing",
+        "testRequestIDGenerationAndPropagation validates 100 unique IDs",
+        "testContextAwareLogging + integration test validate propagation",
+        "testFieldRedaction validates Authorization header redaction",
+        "testFieldRedaction validates secret field masking"
+      ]
+    }
+  ],
+  "implementation_contract": {
+    "package": "internal/log",
+    "required_functions": [
+      {
+        "signature": "WithRequestID(ctx context.Context) context.Context",
+        "purpose": "Add unique request ID to context",
+        "tested_by": "testRequestIDGenerationAndPropagation"
+      },
+      {
+        "signature": "RequestID(ctx context.Context) string",
+        "purpose": "Extract request ID from context",
+        "tested_by": "testRequestIDGenerationAndPropagation"
+      },
+      {
+        "signature": "FromContext(ctx context.Context) *slog.Logger",
+        "purpose": "Get logger with context fields",
+        "tested_by": "testContextAwareLogging"
+      },
+      {
+        "signature": "Info(ctx context.Context, msg string, args ...any)",
+        "purpose": "Log info-level message with context",
+        "tested_by": "testStructuredLoggingFunctions"
+      },
+      {
+        "signature": "Error(ctx context.Context, msg string, err error, args ...any)",
+        "purpose": "Log error with context and error field",
+        "tested_by": "testStructuredLoggingFunctions"
+      },
+      {
+        "signature": "Debug(ctx context.Context, msg string, args ...any)",
+        "purpose": "Log debug-level message with context",
+        "tested_by": "testStructuredLoggingFunctions"
+      },
+      {
+        "signature": "LogDuration(ctx context.Context, operation string, start time.Time)",
+        "purpose": "Log operation duration",
+        "tested_by": "testLogDuration"
+      },
+      {
+        "signature": "SetLogger(logger *slog.Logger)",
+        "purpose": "Configure global logger",
+        "tested_by": "testStructuredLoggingFunctions"
+      },
+      {
+        "signature": "SetLevel(level slog.Level)",
+        "purpose": "Set minimum log level",
+        "tested_by": "testLogLevelConfiguration"
+      }
+    ],
+    "required_behavior": [
+      {
+        "behavior": "All log output must be valid JSON",
+        "validation": "json.Unmarshal() succeeds on all output"
+      },
+      {
+        "behavior": "Request IDs must be unique",
+        "validation": "100 generated IDs are all different"
+      },
+      {
+        "behavior": "Logs must include timestamp, level, message",
+        "validation": "JSON parsing verifies all required fields exist"
+      },
+      {
+        "behavior": "Authorization headers must be redacted",
+        "validation": "Secret values do not appear in output string"
+      },
+      {
+        "behavior": "Duration must be measured accurately",
+        "validation": "10ms sleep results in 5-1000ms logged duration"
+      },
+      {
+        "behavior": "Request ID must propagate through context",
+        "validation": "All logs in scenario share same request_id"
+      }
+    ]
+  },
+  "anti_gaming_examples": [
+    {
+      "cheat": "Return constant request ID",
+      "why_fails": "Uniqueness test generates 100 IDs and checks map for duplicates"
+    },
+    {
+      "cheat": "Print non-JSON output",
+      "why_fails": "json.Unmarshal() returns error, test fails"
+    },
+    {
+      "cheat": "Hardcode duration to 0",
+      "why_fails": "Test sleeps 10ms, checks duration >= 5ms"
+    },
+    {
+      "cheat": "Don't redact Authorization header",
+      "why_fails": "Test searches output for literal secret string"
+    },
+    {
+      "cheat": "Ignore SetLevel() calls",
+      "why_fails": "Test verifies debug logs don't appear when level is Info"
+    },
+    {
+      "cheat": "Don't include request_id in logs",
+      "why_fails": "Test parses JSON and checks request_id field exists"
+    }
+  ],
+  "test_statistics": {
+    "total_tests": 8,
+    "total_assertions": 47,
+    "assertions_per_test": 5.875,
+    "test_lines_of_code": 650,
+    "documentation_lines": 320
+  },
+  "validation_checklist": [
+    {
+      "criterion": "Tests fail before implementation",
+      "status": "verified",
+      "evidence": "Compilation errors: undefined functions"
+    },
+    {
+      "criterion": "Tests use real objects, not mocks",
+      "status": "verified",
+      "evidence": "Uses real slog.Logger, bytes.Buffer, context.Context"
+    },
+    {
+      "criterion": "Tests verify observable outcomes",
+      "status": "verified",
+      "evidence": "Parses JSON output, checks file contents, measures time"
+    },
+    {
+      "criterion": "Tests resist gaming",
+      "status": "verified",
+      "evidence": "Cannot be satisfied by stubs or constants"
+    },
+    {
+      "criterion": "Tests are maintainable",
+      "status": "verified",
+      "evidence": "Clear structure, good names, comprehensive documentation"
+    }
+  ],
+  "next_steps": [
+    "Implement internal/log/logger.go with all required functions",
+    "Run tests iteratively until all pass",
+    "Verify test coverage >= 85% with: go test -cover ./internal/log/",
+    "Run with race detector: go test -race ./test -run TestLogging",
+    "Update PLAN to mark Phase 0.3 complete when tests pass"
+  ],
+  "created": "2025-11-27T01:43:00Z",
+  "test_framework": "Go testing + log/slog",
+  "go_version": "1.25.4"
+}

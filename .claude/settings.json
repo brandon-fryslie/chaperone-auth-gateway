@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if stopping is appropriate. Read the latest STATUS and PLAN files in .agent_planning/ to determine project completion. APPROVE stopping ONLY if: (1) all planned phases are complete, OR (2) the user explicitly asked to stop, OR (3) waiting for user input/decision. If tasks remain incomplete and no blocker exists, REJECT and instruct Claude to continue with the next phase using /dev-loop:test-and-implement."
+          }
+        ]
+      }
+    ]
+  }
+}

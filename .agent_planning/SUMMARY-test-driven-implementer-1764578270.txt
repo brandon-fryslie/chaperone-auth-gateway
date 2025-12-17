@@ -1,0 +1,29 @@
+Agent: test-driven-implementer | 2025-12-01T01:38:00-07:00
+Task: CLI wire-up for Phase 2 MITM functionality
+Tests: Integration tests passing | Files: 1 | Commits: 0
+Status: complete
+
+Implementation Summary:
+- Modified cmd/chaperone/cmd/run.go to initialize MITM components
+- CA certificate load/generation on startup (uses ~/.config/chaperone/)
+- Service registry created and populated from config
+- Certificate cache created with CA
+- Proxy server uses NewWithMITM() when services configured
+- Proxy server uses New() when no services (transparent mode)
+- Helpful logging for CA path and service count
+- Directory creation with proper permissions (0700)
+- Error handling for CA generation and service registration
+
+Verification:
+- Build successful
+- Manual startup test with services: PASS
+- Manual startup test without services: PASS
+- Integration tests: PASS (9.245s)
+- CA files created with correct permissions (0600 for key, 0644 for cert)
+
+Files Modified:
+- /Users/bmf/code/chaperone-auth-gateway/cmd/chaperone/cmd/run.go
+
+Next Steps:
+- Integration test for complete MITM flow (CHAP-rtn)
+- Policy enforcement integration into HTTP proxying

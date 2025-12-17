@@ -1,0 +1,166 @@
+{
+  "phase": "0.8",
+  "phase_name": "Graceful Shutdown",
+  "test_file": "test/shutdown_test.go",
+  "documentation_file": "test/SHUTDOWN_TESTS.md",
+  "implementation_package": "internal/shutdown/shutdown.go",
+  "status": "tests_complete_awaiting_implementation",
+  "tests_added": [
+    "TestManagerCreation",
+    "TestLIFOExecutionOrder",
+    "TestTimeoutEnforcement",
+    "TestErrorCollection",
+    "TestOnceSemantics",
+    "TestContextCancellation",
+    "TestPhase08Completion",
+    "TestShutdownEdgeCases"
+  ],
+  "test_count": {
+    "main_tests": 8,
+    "sub_tests": 21,
+    "total_test_functions": 29
+  },
+  "workflows_covered": [
+    "Manager creation with logger",
+    "Shutdown function registration",
+    "LIFO execution order (last registered, first executed)",
+    "Timeout enforcement on slow functions",
+    "Error collection from multiple functions",
+    "Once semantics (multiple Shutdown calls execute once)",
+    "Context cancellation propagation",
+    "Edge cases (no functions, zero timeout, panics, etc.)"
+  ],
+  "initial_status": "failing",
+  "failure_type": "compilation_error",
+  "failure_reason": "shutdown package not implemented yet (expected)",
+  "gaming_resistance": "high",
+  "anti_gaming_measures": [
+    "Real execution order verified with mutex-protected slice appends",
+    "Real timeouts measured with time.Sleep and time.Since",
+    "Real concurrency tested with goroutines and sync.WaitGroup",
+    "Real context from stdlib with ctx.Done() channel verification",
+    "Real errors created and verified with errors.Is",
+    "Observable side effects via atomic counters and channels",
+    "Timestamps prove sequential LIFO execution",
+    "No mocks for core shutdown behavior"
+  ],
+  "status_gaps_addressed": [
+    "Testing infrastructure before implementation (Phase 0 foundation)",
+    "Test-first development enabled",
+    "Observable behavior validation with real side effects"
+  ],
+  "plan_items_validated": [
+    "CHAP-5t0: Phase 0.8 Graceful Shutdown",
+    "Manager struct with shutdown functions list",
+    "NewManager constructor accepting logger",
+    "Register method for LIFO function queue",
+    "Shutdown method with timeout enforcement",
+    "LIFO execution order requirement",
+    "Error collection from all functions",
+    "sync.Once for single-execution guarantee"
+  ],
+  "requirements_validated": {
+    "lifo_execution": true,
+    "timeout_enforcement": true,
+    "error_collection": true,
+    "once_semantics": true,
+    "context_cancellation": true,
+    "nil_logger_support": true,
+    "concurrent_shutdown_safety": true,
+    "edge_case_handling": true
+  },
+  "test_categories": {
+    "manager_creation": {
+      "tests": 4,
+      "validates": "Manager creation and basic function registration"
+    },
+    "lifo_order": {
+      "tests": 3,
+      "validates": "Last In First Out execution order with observable side effects"
+    },
+    "timeout": {
+      "tests": 4,
+      "validates": "Timeout enforcement with real wall-clock time measurements"
+    },
+    "errors": {
+      "tests": 4,
+      "validates": "Error collection and aggregation from shutdown functions"
+    },
+    "once": {
+      "tests": 3,
+      "validates": "Single execution guarantee with sync.Once"
+    },
+    "context": {
+      "tests": 3,
+      "validates": "Context propagation and cancellation"
+    },
+    "completion": {
+      "tests": 1,
+      "validates": "Overall Phase 0.8 completion status"
+    },
+    "edge_cases": {
+      "tests": 6,
+      "validates": "Edge cases and error conditions"
+    }
+  },
+  "running_instructions": {
+    "all_tests": "go test ./test -run TestGracefulShutdown -v",
+    "completion_check": "go test ./test -run TestPhase08Completion -v",
+    "with_race_detection": "go test ./test -run TestGracefulShutdown -race -v",
+    "specific_category": "go test ./test -run TestLIFOExecutionOrder -v"
+  },
+  "completion_criteria": [
+    "All 8 test categories pass",
+    "go test -race passes (no data races)",
+    "TestPhase08Completion meta-test passes",
+    "Edge cases handled correctly",
+    "LIFO order enforced",
+    "Timeout enforcement works",
+    "Error collection works",
+    "Once semantics implemented with sync.Once"
+  ],
+  "integration_points": {
+    "phase_0.3_logging": "Manager accepts *slog.Logger for shutdown logging",
+    "phase_0.6_context": "Shutdown functions receive context.Context",
+    "phase_0.9_cli": "CLI calls WaitForShutdown() and Shutdown()",
+    "phase_1_plus": "All components register cleanup functions"
+  },
+  "implementation_api": {
+    "type": "type Manager struct",
+    "constructor": "func NewManager(logger *slog.Logger) *Manager",
+    "register": "func (m *Manager) Register(fn func(ctx context.Context) error)",
+    "shutdown": "func (m *Manager) Shutdown(timeout time.Duration) error",
+    "wait": "func (m *Manager) WaitForShutdown() error (optional, for signal handling)"
+  },
+  "test_performance": {
+    "expected_duration": "< 5 seconds for all tests",
+    "timeout_values": {
+      "short": "50ms (trigger cancellation)",
+      "normal": "100-200ms (normal operation)",
+      "large": "1 hour (test completion)"
+    },
+    "function_delays": {
+      "fast": "5ms",
+      "slow": "200ms"
+    }
+  },
+  "files_created": [
+    "test/shutdown_test.go",
+    "test/SHUTDOWN_TESTS.md",
+    "test/PHASE_08_TEST_SUMMARY.json"
+  ],
+  "next_steps": [
+    "Implement internal/shutdown/shutdown.go",
+    "Run tests to verify implementation",
+    "Fix any issues until all tests pass",
+    "Run with -race to verify no data races",
+    "Update PLAN if needed",
+    "Mark Phase 0.8 as complete"
+  ],
+  "notes": {
+    "lifo_importance": "LIFO order is critical for proper cleanup - components registered last often depend on earlier ones",
+    "timeout_importance": "Without timeout, one stuck function blocks entire shutdown",
+    "once_importance": "Multiple shutdown sources (signals, endpoints, errors) must be safe",
+    "no_signal_testing": "OS signal handling (SIGTERM/SIGINT) not tested due to difficulty testing reliably - test Shutdown() method directly instead"
+  }
+}

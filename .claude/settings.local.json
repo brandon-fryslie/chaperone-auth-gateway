@@ -1,0 +1,5 @@
+{
+  "enabledMcpjsonServers": [
+    "bigcodegen/mcp-neovim-server"
+  ]
+}

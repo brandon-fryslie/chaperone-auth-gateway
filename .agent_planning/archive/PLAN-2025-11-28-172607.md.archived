@@ -1,0 +1,488 @@
+# Chaperone Phase 1 Implementation Plan - Basic Proxy Server
+
+**Generated:** 2025-11-28 17:26:07
+**Source STATUS:** STATUS-2025-11-28-172146.md
+**Spec:** PROJECT_SPEC.md (lines 44-53, 61-69)
+**Project State:** Foundation COMPLETE (12% overall), Phase 1 NOT STARTED
+
+---
+
+## Executive Summary
+
+**Foundation Status:** COMPLETE
+- Phase 0 (8 sub-phases): 104 tests passing, 0 technical debt, 0 race conditions
+- Phase 0.9 (CLI): 15 tests passing, all commands functional
+- Total: 119 tests passing, excellent infrastructure
+
+**Current Reality:** The project has ZERO end-user functionality. Cannot proxy requests, cannot inject credentials.
+
+**Phase 1 Goal:** Implement working HTTP proxy server with CONNECT tunnel support to unblock all downstream work.
+
+**Critical Path:** Phase 1 blocks ALL subsequent phases (MITM, secrets, auth, service registry). Nothing else can proceed until basic proxying works.
+
+**Complexity:** Medium
+**Risk:** Low (leveraging solid foundation)
+**Dependencies:** None (foundation complete)
+
+---
+
+## Phase 1 Scope
+
+### What Phase 1 Delivers
+
+1. **HTTP Proxy Server** - Accept connections on configured port (default 127.0.0.1:4010)
+2. **CONNECT Tunnel Handler** - Establish bidirectional tunnels for HTTPS traffic
+3. **Integration Test** - Validate transparent proxying against real domain (google.com)
+4. **CLI Integration** - Wire server into `chaperone run` command
+
+### What Phase 1 Does NOT Include
+
+- NO MITM (Phase 2)
+- NO credential injection (Phase 3+)
+- NO service routing (Phase 2)
+- NO authentication strategies (Phase 4)
+- NO secret providers (Phase 3)
+
+Phase 1 implements **transparent tunneling only** - pure byte forwarding without inspection.
+
+---
+
+## Work Items
+
+### CHAP-jds: Implement Basic HTTP Proxy Server
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P0 (CRITICAL - blocks everything)
+**Dependencies**: Phase 0 complete
+**Spec Reference**: PROJECT_SPEC.md lines 44-53 • STATUS-2025-11-28-172146.md lines 219-228
+
+#### Description
+Create HTTP server that listens on configured port and accepts incoming proxy connections. This is the foundation component that enables all proxy functionality. The server must integrate with Phase 0 infrastructure (config, logging, shutdown).
+
+#### Implementation Details
+
+**File**: `internal/proxy/server.go`
+
+Key components:
+- Server struct with http.Server, logger, config
+- Start() method that binds to configured address:port
+- Integration with Phase 0.8 shutdown manager
+- Structured logging using Phase 0.3 logger
+- Configuration from Phase 0.4 config system
+- Context propagation using Phase 0.6 patterns
+
+**Structure**:
+```go
+type Server struct {
+    httpServer *http.Server
+    logger     *slog.Logger
+    config     *config.ServerConfig
+    shutdown   *shutdown.Manager
+}
+
+func New(cfg *config.ServerConfig, logger *slog.Logger, shutdownMgr *shutdown.Manager) *Server
+
+func (s *Server) Start(ctx context.Context) error
+
+func (s *Server) Stop(ctx context.Context) error
+```
+
+#### Acceptance Criteria
+- [ ] Server starts on configured port (from config.Server.Address:Port)
+- [ ] Server binds to 127.0.0.1:4010 by default
+- [ ] Server logs startup event with structured JSON
+- [ ] Server registers shutdown handler with Phase 0.8 shutdown manager
+- [ ] Graceful shutdown completes within 10 second timeout
+- [ ] Unit test verifies server lifecycle (start, stop, restart)
+- [ ] Integration test validates server accepts connections
+- [ ] make test passes (including new server tests)
+- [ ] make test-race passes (0 data races)
+
+#### Technical Notes
+- Use Phase 0.4 config.ServerConfig for address/port
+- Use Phase 0.3 log package for all logging
+- Register shutdown handler immediately in Start()
+- Handle port already in use error gracefully
+- Return clear error if config invalid
+- Next step will add custom Handler for CONNECT requests
+
+---
+
+### CHAP-b2i: Implement CONNECT Tunnel Handler
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P0 (CRITICAL - core proxy functionality)
+**Dependencies**: CHAP-jds (server must exist first)
+**Spec Reference**: PROJECT_SPEC.md lines 61-69 • STATUS-2025-11-28-172146.md lines 219-228
+
+#### Description
+Implement CONNECT method handler that establishes bidirectional TCP tunnels for HTTPS traffic. This enables transparent proxying of HTTPS requests without MITM (pure byte forwarding). Critical for making the proxy functional.
+
+#### Implementation Details
+
+**File**: `internal/proxy/tunnel.go`
+
+Tunnel lifecycle:
+1. Parse CONNECT request (extract host:port)
+2. Hijack client connection using http.Hijacker
+3. Establish TCP connection to upstream host:port
+4. Send "200 Connection Established" to client
+5. Start bidirectional io.Copy (2 goroutines)
+6. Handle connection cleanup on either side closing
+7. Propagate errors using context cancellation
+
+**Structure**:
+```go
+type TunnelHandler struct {
+    logger   *slog.Logger
+    dialer   *net.Dialer
+}
+
+func NewTunnelHandler(logger *slog.Logger) *TunnelHandler
+
+func (h *TunnelHandler) HandleCONNECT(ctx context.Context, w http.ResponseWriter, r *http.Request) error
+
+func (h *TunnelHandler) bidirectionalCopy(ctx context.Context, client, upstream net.Conn) error
+```
+
+#### Acceptance Criteria
+- [ ] CONNECT requests parsed correctly (host:port extraction)
+- [ ] Client connection hijacked successfully
+- [ ] Upstream TCP connection established
+- [ ] 200 Connection Established sent to client
+- [ ] Bidirectional tunnel works (both client->upstream and upstream->client)
+- [ ] Connection cleanup happens when either side closes
+- [ ] Goroutines cleaned up (no leaks - verified with pprof or test)
+- [ ] Context cancellation propagates to both goroutines
+- [ ] Timeout enforced for upstream connection (30 seconds)
+- [ ] Errors logged with request context (request ID, hostname)
+- [ ] Unit test with mock connections validates tunnel logic
+- [ ] Integration test validates real HTTPS tunnel
+- [ ] make test passes
+- [ ] make test-race passes (0 data races in bidirectional copy)
+
+#### Technical Notes
+- Use io.Copy for bidirectional streaming (efficient, handles backpressure)
+- Use context.WithCancel for cleanup coordination
+- Launch 2 goroutines (client->upstream, upstream->client)
+- Use sync.WaitGroup or channels to wait for both goroutines
+- Log tunnel establishment and closure with duration
+- Handle upstream connection timeout (dial timeout)
+- Next phase will add MITM decision logic before establishing tunnel
+
+---
+
+### CHAP-4iy: Write Integration Test for Transparent HTTPS Tunneling
+
+**Status**: NOT STARTED
+**Complexity**: LOW
+**Priority**: P0 (validates Phase 1 works end-to-end)
+**Dependencies**: CHAP-jds, CHAP-b2i (server and tunnel must work)
+**Spec Reference**: PROJECT_SPEC.md lines 46-47 • STATUS-2025-11-28-172146.md lines 165-189
+
+#### Description
+Create integration test that validates the complete Phase 1 flow: start proxy server, configure HTTP client to use proxy, make HTTPS request to real domain (google.com), verify response. This proves transparent tunneling works without MITM.
+
+#### Implementation Details
+
+**File**: `test/integration/proxy_test.go`
+
+Test flow:
+1. Start chaperone server in test (using config from Phase 0.4)
+2. Create http.Client with proxy configuration
+3. Make HTTPS request to https://www.google.com
+4. Verify response status 200
+5. Verify response body contains expected content
+6. Verify tunnel was transparent (no certificate warnings)
+7. Stop server cleanly
+8. Validate all resources cleaned up
+
+**Test Structure**:
+```go
+func TestTransparentHTTPSTunnel(t *testing.T) {
+    // Setup: Start server
+    // Action: Make HTTPS request through proxy
+    // Assert: Response successful, no MITM
+    // Cleanup: Stop server
+}
+
+func TestTunnelToMultipleDomains(t *testing.T) {
+    // Validate tunneling works for different domains
+}
+
+func TestConcurrentTunnels(t *testing.T) {
+    // Validate multiple simultaneous tunnels work
+}
+
+func TestTunnelErrorHandling(t *testing.T) {
+    // Validate error cases: invalid host, timeout, connection refused
+}
+```
+
+#### Acceptance Criteria
+- [ ] Test starts and stops proxy server cleanly
+- [ ] HTTPS request through proxy succeeds (status 200)
+- [ ] Response body matches direct request (same content)
+- [ ] No certificate warnings (pure tunnel, no MITM)
+- [ ] Test cleans up all resources (no goroutine leaks)
+- [ ] Test runs in CI environment (no external dependencies beyond google.com)
+- [ ] Concurrent requests test validates thread safety
+- [ ] Error handling test validates timeout, invalid host scenarios
+- [ ] Test uses Phase 0.5 test infrastructure helpers
+- [ ] make test runs integration tests
+- [ ] make test-race passes (0 races in concurrent test)
+
+#### Technical Notes
+- Use httptest infrastructure from Phase 0.5 where possible
+- Create test config with unique port to avoid conflicts
+- Use t.Cleanup() for resource cleanup
+- Set reasonable timeouts (5s for request, 10s for test)
+- Test against stable domain (google.com, cloudflare.com)
+- Validate logs show tunnel establishment and closure
+- This test serves as regression test for all future MITM work
+
+---
+
+### Wire Server into `chaperone run` Command
+
+**Status**: NOT STARTED
+**Complexity**: LOW
+**Priority**: P0 (makes Phase 1 usable)
+**Dependencies**: CHAP-jds, CHAP-b2i, CHAP-4iy (server must work first)
+**Spec Reference**: PROJECT_SPEC.md lines 237-241 • STATUS-2025-11-28-172146.md lines 72-75, 549-552
+
+#### Description
+Integrate the proxy server into the existing `chaperone run` command (cmd/chaperone/cmd/run.go line 72). Replace the "TODO: Phase 1" comment with actual server initialization and startup. This makes the proxy usable from the CLI.
+
+#### Implementation Details
+
+**File**: `cmd/chaperone/cmd/run.go` (modify existing)
+
+Changes at line 72 (current TODO):
+```go
+// Replace this:
+// TODO: Phase 1 will add server initialization here
+
+// With this:
+// Create proxy server
+proxyServer := proxy.New(&cfg.Server, logger, shutdownMgr)
+
+// Start server
+if err := proxyServer.Start(ctx); err != nil {
+    return fmt.Errorf("failed to start proxy server: %w", err)
+}
+
+logger.Info("proxy server started", "address", cfg.Server.Address, "port", cfg.Server.Port)
+```
+
+Integration points:
+- Use config loaded from Phase 0.4 (already in run.go)
+- Use logger from Phase 0.3 (already in run.go)
+- Use shutdown manager from Phase 0.8 (already in run.go)
+- Server.Start() blocks until shutdown signal
+
+#### Acceptance Criteria
+- [ ] `chaperone run --config <file>` starts proxy server
+- [ ] Server listens on port from config (default 4010)
+- [ ] Server logs startup with address and port
+- [ ] Server waits for SIGTERM/SIGINT (blocks in Start())
+- [ ] Graceful shutdown works (SIGTERM stops server cleanly)
+- [ ] Config validation errors reported clearly
+- [ ] Manual test: `chaperone run` works as expected
+- [ ] Manual test: `HTTPS_PROXY=http://127.0.0.1:4010 curl https://www.google.com` works
+- [ ] CLI test updated to validate server integration
+- [ ] make test passes (including updated CLI tests)
+
+#### Technical Notes
+- Minimal changes to existing run.go
+- Leverage all existing Phase 0.9 infrastructure
+- Server.Start() should block until shutdown (simplifies control flow)
+- Log both startup and shutdown events
+- Return server error to CLI for proper exit code
+- Next phase will add MITM logic to the server
+
+---
+
+## Dependency Graph
+
+```
+Phase 0 (Foundation) - COMPLETE
+    │
+    ├─→ CHAP-jds (HTTP Proxy Server)
+    │       │
+    │       └─→ CHAP-b2i (CONNECT Tunnel Handler)
+    │               │
+    │               └─→ CHAP-4iy (Integration Test)
+    │                       │
+    │                       └─→ Wire into CLI
+    │
+    └─→ (All Phase 1 work items ready to start)
+```
+
+**Execution Order**:
+1. CHAP-jds (server foundation)
+2. CHAP-b2i (tunnel handler) - depends on server
+3. CHAP-4iy (integration test) - depends on both
+4. Wire into CLI - depends on all above
+
+**Parallel Work**: None (sequential dependencies)
+
+---
+
+## Testing Strategy
+
+### Unit Tests
+- `internal/proxy/server_test.go` - Server lifecycle, configuration, shutdown
+- `internal/proxy/tunnel_test.go` - Tunnel handler with mock connections
+
+### Integration Tests
+- `test/integration/proxy_test.go` - End-to-end transparent tunneling
+- Multiple domains, concurrent requests, error scenarios
+
+### Manual Tests
+After Phase 1 completion, these manual tests should work:
+
+```bash
+# Test 1: Start server
+./chaperone run --config chaperone.toml
+# Expected: Server starts on port 4010, logs startup
+
+# Test 2: Proxy HTTPS request
+export HTTPS_PROXY=http://127.0.0.1:4010
+curl -v https://www.google.com
+# Expected: Request succeeds, response from Google
+
+# Test 3: Concurrent requests
+for i in {1..10}; do
+  curl -x http://127.0.0.1:4010 https://www.google.com &
+done
+wait
+# Expected: All requests succeed
+
+# Test 4: Graceful shutdown
+./chaperone run --config chaperone.toml &
+PID=$!
+sleep 2
+kill -TERM $PID
+# Expected: Clean shutdown, all connections closed
+```
+
+### Test Coverage Goals
+- Unit tests: 85%+ coverage
+- Integration tests: Cover all happy paths + key error scenarios
+- Race detector: 0 races (make test-race must pass)
+
+---
+
+## Acceptance Criteria for Phase 1 Completion
+
+Phase 1 is COMPLETE when ALL of the following are true:
+
+### Functionality
+- [ ] Proxy server starts on configured address:port
+- [ ] CONNECT requests establish bidirectional tunnels
+- [ ] HTTPS requests tunnel correctly to upstream
+- [ ] Multiple concurrent tunnels work without interference
+- [ ] Server integrates with `chaperone run` command
+- [ ] Graceful shutdown works (SIGTERM/SIGINT)
+
+### Testing
+- [ ] All unit tests pass (make test)
+- [ ] All integration tests pass
+- [ ] Race detector passes (make test-race)
+- [ ] Manual test against google.com works
+- [ ] Concurrent request test passes (10+ simultaneous)
+
+### Quality
+- [ ] All logs use Phase 0.3 structured JSON logging
+- [ ] All errors use Phase 0.2 error types
+- [ ] All code uses Phase 0.6 context propagation
+- [ ] Server registers with Phase 0.8 shutdown manager
+- [ ] Configuration uses Phase 0.4 config framework
+- [ ] Code passes golangci-lint
+- [ ] Code passes go vet
+
+### Documentation
+- [ ] Code includes clear comments
+- [ ] Public functions have godoc
+- [ ] Integration test documents usage patterns
+- [ ] README updated with Phase 1 completion status
+
+---
+
+## Risk Assessment
+
+### Low Risk
+- **Foundation Solid**: Phase 0 provides excellent infrastructure
+- **Standard Patterns**: HTTP proxy and CONNECT tunnel are well-understood
+- **Good Testing**: Integration test validates real-world usage
+- **Clear Scope**: Phase 1 is narrow and focused
+
+### Potential Issues
+1. **Port Conflicts**: Mitigated by configurable port, clear error messages
+2. **Goroutine Leaks**: Mitigated by careful cleanup, context cancellation, tests
+3. **Concurrent Access**: Mitigated by careful locking, race detector tests
+4. **Connection Cleanup**: Mitigated by context cancellation, defer patterns
+
+### Mitigation Strategies
+- Use Phase 0 patterns consistently (reduces novel code)
+- Write tests first (catch issues early)
+- Run race detector on every change
+- Manual testing with real traffic
+- Review goroutine lifecycle carefully
+
+---
+
+## Estimated Effort
+
+**Total Complexity**: MEDIUM
+
+**Work Items**:
+- CHAP-jds (HTTP Server): MEDIUM - 1 focused session
+- CHAP-b2i (CONNECT Tunnel): MEDIUM - 1 focused session
+- CHAP-4iy (Integration Test): LOW - 0.5 focused session
+- CLI Integration: LOW - 0.5 focused session
+
+**Total Estimate**: 3 focused work sessions (approximately)
+
+**Definition of "Focused Session"**: 2-3 hours of uninterrupted development time following test-first discipline.
+
+---
+
+## Success Metrics
+
+Phase 1 success is measured by:
+
+1. **Functional**: Can proxy HTTPS requests to arbitrary domains
+2. **Tested**: 119 + new tests passing, 0 races
+3. **Integrated**: Works via `chaperone run` command
+4. **Quality**: Maintains Phase 0 quality standards (clean code, good tests, 0 debt)
+
+**Key Indicator**: User can run `HTTPS_PROXY=http://127.0.0.1:4010 curl https://www.google.com` and get a successful response.
+
+---
+
+## What Comes After Phase 1
+
+Phase 1 unblocks:
+
+**Phase 2: MITM & Service Routing** (next priority)
+- Selective MITM engine (terminate TLS for configured domains)
+- Service registry implementation
+- Policy enforcement
+
+**Phase 3: Basic Authentication** (depends on Phase 2)
+- Environment variable secret provider
+- Bearer token auth strategy
+- End-to-end auth test
+
+Phase 1 is the **critical foundation** that makes all subsequent work possible. Without a working proxy server, nothing else can be implemented or tested.
+
+---
+
+**Generated:** 2025-11-28 17:26:07
+**Status Planner:** status-planner agent
+**Ready to Start:** YES (all dependencies met)
+**Recommended Action:** Begin with CHAP-jds (HTTP Proxy Server)

@@ -1,0 +1,41 @@
+# Full configuration for Chaperone
+# All fields are explicitly specified
+
+[server]
+address = "127.0.0.1"
+port = 4010
+
+[logging]
+level = "info"
+format = "json"
+output = "stdout"
+
+# GitHub API service
+[services.github]
+host_pattern = "api.github.com"
+auth_strategy = "bearer"
+credential_ref = "github_token"
+allowed_methods = ["GET", "POST", "PATCH", "DELETE"]
+allowed_paths = ["/repos/*", "/user/*", "/orgs/*"]
+max_body_bytes = 10485760  # 10MB
+client_groups = ["developers", "ci-cd"]
+
+# Generic API service
+[services.api]
+host_pattern = "api.example.com"
+auth_strategy = "basic"
+credential_ref = "api_credentials"
+allowed_methods = ["GET", "POST", "PUT", "DELETE"]
+allowed_paths = ["/v1/*", "/v2/*"]
+max_body_bytes = 5242880  # 5MB
+client_groups = ["internal"]
+
+# Public API service (no auth)
+[services.public]
+host_pattern = "public.example.com"
+auth_strategy = ""
+credential_ref = ""
+allowed_methods = ["GET"]
+allowed_paths = ["/health", "/status"]
+max_body_bytes = 1048576  # 1MB
+client_groups = []
