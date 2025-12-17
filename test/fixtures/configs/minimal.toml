@@ -1,0 +1,5 @@
+# Minimal configuration for Chaperone
+# Only required fields are specified
+
+[services.github]
+host_pattern = "api.github.com"

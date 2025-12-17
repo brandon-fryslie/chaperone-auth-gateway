@@ -1,0 +1,32 @@
+{"time":"2025-12-15T17:22:19.338856-07:00","level":"INFO","msg":"chaperone starting","version":"0.1.0","config":"chaperone.toml","address":"127.0.0.1","port":4010}
+{"time":"2025-12-15T17:22:19.339359-07:00","level":"INFO","msg":"CA certificate initialized","cert_path":"/Users/bmf/Library/Application Support/chaperone/ca-cert.pem","key_path":"/Users/bmf/Library/Application Support/chaperone/ca-key.pem"}
+{"time":"2025-12-15T17:22:19.339369-07:00","level":"INFO","msg":"Trust this CA in your browser/system to avoid certificate warnings","cert_path":"/Users/bmf/Library/Application Support/chaperone/ca-cert.pem"}
+{"time":"2025-12-15T17:22:19.339375-07:00","level":"INFO","msg":"registered service","name":"openai","host_pattern":"api.openai.com","auth_strategy":"bearer"}
+{"time":"2025-12-15T17:22:19.339379-07:00","level":"INFO","msg":"MITM enabled for configured services","service_count":1}
+{"time":"2025-12-15T17:22:19.339388-07:00","level":"INFO","msg":"proxy server created with MITM support and authentication"}
+{"time":"2025-12-15T17:22:19.33949-07:00","level":"INFO","msg":"proxy server listening","address":"127.0.0.1","port":4010}
+{"time":"2025-12-15T17:22:19.339508-07:00","level":"INFO","msg":"proxy server started successfully"}
+{"time":"2025-12-15T17:22:19.339512-07:00","level":"INFO","msg":"waiting for shutdown signal (SIGTERM/SIGINT)"}
+{"time":"2025-12-15T17:22:26.57248-07:00","level":"INFO","msg":"handling CONNECT request","request_id":"req-b43f3d081ab84598e942d5d920c747d0","host":"chatgpt.com:443","remote_addr":"127.0.0.1:55379"}
+{"time":"2025-12-15T17:22:37.576538-07:00","level":"ERROR","msg":"failed to connect to upstream","request_id":"req-b43f3d081ab84598e942d5d920c747d0","error":"dial tcp 172.64.155.209:443: i/o timeout","host":"chatgpt.com:443"}
+{"time":"2025-12-15T17:23:26.570808-07:00","level":"INFO","msg":"handling CONNECT request","request_id":"req-c5fe879fd582c632755f26d2ec52a5bd","host":"chatgpt.com:443","remote_addr":"127.0.0.1:55602"}
+{"time":"2025-12-15T17:23:37.574141-07:00","level":"ERROR","msg":"failed to connect to upstream","request_id":"req-c5fe879fd582c632755f26d2ec52a5bd","error":"dial tcp 172.64.155.209:443: i/o timeout","host":"chatgpt.com:443"}
+{"time":"2025-12-15T17:24:26.059268-07:00","level":"INFO","msg":"handling CONNECT request","request_id":"req-8f67d63408909b57e3bff7f283f047ec","host":"api.openai.com:443","remote_addr":"127.0.0.1:55849"}
+{"time":"2025-12-15T17:24:26.059331-07:00","level":"INFO","msg":"performing MITM for configured domain","request_id":"req-8f67d63408909b57e3bff7f283f047ec","host":"api.openai.com:443"}
+{"time":"2025-12-15T17:24:26.107612-07:00","level":"INFO","msg":"MITM TLS handshake successful","request_id":"req-8f67d63408909b57e3bff7f283f047ec","host":"api.openai.com:443"}
+{"time":"2025-12-15T17:24:26.107736-07:00","level":"INFO","msg":"applied authentication to upstream request","request_id":"req-8f67d63408909b57e3bff7f283f047ec","service":"api.openai.com","strategy":"bearer"}
+{"time":"2025-12-15T17:24:26.570298-07:00","level":"INFO","msg":"handling CONNECT request","request_id":"req-2d16f77c487a094962e781715804e8a1","host":"chatgpt.com:443","remote_addr":"127.0.0.1:55851"}
+{"time":"2025-12-15T17:24:37.572643-07:00","level":"ERROR","msg":"failed to connect to upstream","request_id":"req-2d16f77c487a094962e781715804e8a1","error":"dial tcp 172.64.155.209:443: i/o timeout","host":"chatgpt.com:443"}
+{"time":"2025-12-15T17:24:57.111064-07:00","level":"ERROR","msg":"failed to forward request","request_id":"req-8f67d63408909b57e3bff7f283f047ec","error":"upstream request failed: Get \"https://api.openai.com:443/v1/models\": dial tcp 172.66.0.243:443: i/o timeout","hostname":"api.openai.com:443"}
+{"time":"2025-12-15T17:25:07.868608-07:00","level":"INFO","msg":"handling CONNECT request","request_id":"req-f64784d2c3f98833f33ec4b3de406015","host":"httpbin.org:443","remote_addr":"127.0.0.1:56041"}
+{"time":"2025-12-15T17:25:18.873016-07:00","level":"ERROR","msg":"failed to connect to upstream","request_id":"req-f64784d2c3f98833f33ec4b3de406015","error":"dial tcp 34.193.26.89:443: i/o timeout","host":"httpbin.org:443"}
+{"time":"2025-12-15T17:25:24.31612-07:00","level":"INFO","msg":"handling CONNECT request","request_id":"req-f43bbee380e07a88b0d5668f8f918fac","host":"httpbin.org:443","remote_addr":"127.0.0.1:56110"}
+{"time":"2025-12-15T17:25:26.571862-07:00","level":"INFO","msg":"handling CONNECT request","request_id":"req-e44151d007e386a558c39ac7544990f7","host":"chatgpt.com:443","remote_addr":"127.0.0.1:56129"}
+{"time":"2025-12-15T17:25:35.320593-07:00","level":"ERROR","msg":"failed to connect to upstream","request_id":"req-f43bbee380e07a88b0d5668f8f918fac","error":"dial tcp 34.193.26.89:443: i/o timeout","host":"httpbin.org:443"}
+{"time":"2025-12-15T17:25:37.575639-07:00","level":"ERROR","msg":"failed to connect to upstream","request_id":"req-e44151d007e386a558c39ac7544990f7","error":"dial tcp 172.64.155.209:443: i/o timeout","host":"chatgpt.com:443"}
+{"time":"2025-12-15T17:26:26.570248-07:00","level":"INFO","msg":"handling CONNECT request","request_id":"req-2b124604bc1abdaabf9263c312626f70","host":"chatgpt.com:443","remote_addr":"127.0.0.1:56401"}
+{"time":"2025-12-15T17:26:37.574528-07:00","level":"ERROR","msg":"failed to connect to upstream","request_id":"req-2b124604bc1abdaabf9263c312626f70","error":"dial tcp 172.64.155.209:443: i/o timeout","host":"chatgpt.com:443"}
+{"time":"2025-12-15T17:27:14.147526-07:00","level":"INFO","msg":"shutdown signal received, shutting down"}
+{"time":"2025-12-15T17:27:14.147595-07:00","level":"INFO","msg":"stopping proxy server"}
+{"time":"2025-12-15T17:27:14.147692-07:00","level":"INFO","msg":"proxy server stopped"}
+{"time":"2025-12-15T17:27:14.147704-07:00","level":"INFO","msg":"chaperone stopped"}

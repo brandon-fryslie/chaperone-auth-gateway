@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "bigcodegen/mcp-neovim-server": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-neovim-server"
+      ],
+      "env": {},
+      "type": "stdio"
+    }
+  }
+}

@@ -1,0 +1,34 @@
+2025-12-15T17:01:04.699022 ============================================================
+2025-12-15T17:01:04.699163 init.py: SESSION START
+2025-12-15T17:01:04.699231 init.py: session_id=aa121d75-0d58-4d61-95c3-fc91a8e8b187
+2025-12-15T17:01:04.699349 init.py: cwd=/Users/bmf/code/chaperone-auth-gateway
+2025-12-15T17:01:04.699410 init.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'hook_event_name', 'source']
+2025-12-15T17:01:04.699467 init.py: hook_event_name=SessionStart
+2025-12-15T17:01:04.699523 init.py: transcript_path=/Users/bmf/.claude/projects/-Users-bmf-code-chaperone-auth-gateway/aa121d75-0d58-4d61-95c3-fc91a8e8b187.jsonl
+2025-12-15T17:01:04.699593 init.py: directory exists: .agent_planning/do-command-logs
+2025-12-15T17:01:04.699782 init.py: created directory: .agent_planning/do-command-logs/partials
+2025-12-15T17:01:04.699883 init.py: initialization complete
+2025-12-15T17:06:29.608612 ------------------------------------------------------------
+2025-12-15T17:06:29.608879 aggregate-exec.py: STOP HOOK TRIGGERED
+2025-12-15T17:06:29.608976 aggregate-exec.py: session_id=aa121d75-0d58-4d61-95c3-fc91a8e8b187
+2025-12-15T17:06:29.609109 aggregate-exec.py: cwd=/Users/bmf/code/chaperone-auth-gateway
+2025-12-15T17:06:29.609198 aggregate-exec.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'permission_mode', 'hook_event_name', 'stop_hook_active']
+2025-12-15T17:06:29.609266 aggregate-exec.py: hook_event_name=Stop
+2025-12-15T17:06:29.609351 aggregate-exec.py: permission_mode=bypassPermissions
+2025-12-15T17:06:29.609419 aggregate-exec.py: stop_hook_active=False
+2025-12-15T17:06:29.609491 aggregate-exec.py: checking partials_dir=.agent_planning/do-command-logs/partials
+2025-12-15T17:06:29.609566 aggregate-exec.py: scanning for partial files...
+2025-12-15T17:06:29.609843 aggregate-exec.py: found 0 files matching *-PARTIAL-*.txt
+2025-12-15T17:06:29.609931 aggregate-exec.py: no partial files, nothing to aggregate
+2025-12-15T17:30:34.090217 ------------------------------------------------------------
+2025-12-15T17:30:34.090439 aggregate-exec.py: STOP HOOK TRIGGERED
+2025-12-15T17:30:34.090568 aggregate-exec.py: session_id=aa121d75-0d58-4d61-95c3-fc91a8e8b187
+2025-12-15T17:30:34.090656 aggregate-exec.py: cwd=/Users/bmf/code/chaperone-auth-gateway
+2025-12-15T17:30:34.090749 aggregate-exec.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'permission_mode', 'hook_event_name', 'stop_hook_active']
+2025-12-15T17:30:34.090836 aggregate-exec.py: hook_event_name=Stop
+2025-12-15T17:30:34.090902 aggregate-exec.py: permission_mode=bypassPermissions
+2025-12-15T17:30:34.090965 aggregate-exec.py: stop_hook_active=False
+2025-12-15T17:30:34.091056 aggregate-exec.py: checking partials_dir=.agent_planning/do-command-logs/partials
+2025-12-15T17:30:34.091144 aggregate-exec.py: scanning for partial files...
+2025-12-15T17:30:34.091372 aggregate-exec.py: found 0 files matching *-PARTIAL-*.txt
+2025-12-15T17:30:34.091439 aggregate-exec.py: no partial files, nothing to aggregate

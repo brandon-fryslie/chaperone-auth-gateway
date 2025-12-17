@@ -1,0 +1,43 @@
+Agent: functional-tester | 2025-11-30 16:00:00
+Tests: 39 test functions added across 5 files | Workflows: 8 covered
+Status: failing (as expected - no implementation exists) | Commit: pending
+Coverage: CA management, Certificate generation, Service registry, Policy enforcement, Integration
+
+Test Files Created:
+- test/mitm_ca_test.go (7 test functions) - CA generation, storage, loading, signing
+- test/mitm_cert_test.go (10 test functions) - Certificate generation, caching, expiration
+- test/service_test.go (9 test functions) - Service registration, lookup, domain matching
+- test/policy_test.go (5 test functions) - Method/path/size enforcement
+- test/integration/mitm_integration_test.go (8 test functions) - End-to-end MITM workflow
+
+Documentation:
+- test/PHASE2_TESTS_README.md - Comprehensive test documentation
+
+Workflows Covered:
+1. CA certificate lifecycle (generate, store, load, sign)
+2. Dynamic certificate generation with caching
+3. Service registry with case-insensitive lookup
+4. Policy enforcement (methods, paths, body size)
+5. Selective MITM for configured domains
+6. Transparent tunnel for non-configured domains
+7. Certificate trust validation
+8. Concurrent MITM operations
+
+Status Gaps Addressed (from STATUS-2025-11-30-150747.md):
+- MITM Engine (NOT_STARTED) → Tests define contract for implementation
+- Service Engine (PARTIAL) → Tests validate service registry and routing
+- Policy Layer (PARTIAL) → Tests validate method/path/size enforcement
+
+Plan Items Validated (from PLAN-2025-11-30-150900.md):
+- CHAP-5v5: CA certificate management
+- CHAP-w9q: Dynamic certificate generation
+- CHAP-qkq: Service/Policy structures
+- CHAP-a1z: Service registry
+- CHAP-3ot: Domain matching
+- CHAP-c2s: Policy enforcement
+- CHAP-rtn: Integration testing
+
+Gaming Resistance: HIGH
+All tests use real crypto operations, real file I/O, real network operations.
+Cannot be satisfied with stubs or mocks.
+Tests verify actual observable outcomes (files on disk, HTTP status codes, certificate chains).

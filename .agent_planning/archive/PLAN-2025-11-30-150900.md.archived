@@ -1,0 +1,1171 @@
+# Chaperone Phase 2 Implementation Plan - MITM & Service Routing
+
+**Generated:** 2025-11-30 15:09:00
+**Source STATUS:** STATUS-2025-11-30-150747.md
+**Spec:** PROJECT_SPEC.md (lines 55-85, 156-179)
+**Project State:** Phase 0, 0.9, 1 COMPLETE (18% overall), Phase 2 NOT STARTED
+
+---
+
+## Provenance
+
+**STATUS File:** STATUS-2025-11-30-150747.md (generated 2025-11-30 15:07:47)
+**Specification:** PROJECT_SPEC.md (last modified based on git)
+**Planning File Generated:** 2025-11-30 15:09:00
+**Agent:** status-planner
+
+---
+
+## Executive Summary
+
+**Foundation Status:** EXCELLENT - 139 tests passing, 0 technical debt, 0 race conditions
+- Phase 0 (Foundation): 104 tests PASS - error handling, logging, config, context, shutdown
+- Phase 0.9 (CLI): 15 tests PASS - init and run commands fully functional
+- Phase 1 (Basic Proxy): 20 tests PASS - transparent HTTPS tunneling works
+
+**Current Reality:** Chaperone can proxy HTTPS requests transparently but **CANNOT inject credentials** because:
+1. NO MITM capability - all traffic tunnels without inspection
+2. NO service routing - cannot determine which domains to MITM
+3. NO credential injection - cannot modify request headers
+4. NO policy enforcement - cannot restrict paths/methods
+
+**Phase 2 Goal:** Implement selective MITM engine and service routing to unblock credential injection.
+
+**What Phase 2 Enables:**
+- Terminate TLS for configured domains (e.g., api.openai.com)
+- Inspect and modify HTTP requests at the header level
+- Route requests based on service configuration
+- Foundation for Phase 3 authentication strategies
+
+**Critical Path:** Phase 2 blocks Phase 3 (authentication) and Phase 4 (secrets). Without MITM, Chaperone cannot inject credentials into request headers.
+
+**Complexity:** HIGH
+**Risk:** MEDIUM (CA management, TLS termination, selective routing)
+**Dependencies:** Phase 0, 0.9, 1 complete ✓
+**Estimated Effort:** 5-7 focused work sessions
+
+---
+
+## Phase 2 Scope
+
+### What Phase 2 Delivers
+
+1. **CA Certificate Management** - Generate and store local CA for signing leaf certificates
+2. **Dynamic Certificate Generation** - Create per-domain TLS certificates on-demand
+3. **Selective MITM Logic** - Decide which domains to MITM vs tunnel transparently
+4. **Service Registry** - Store and lookup service configurations by hostname
+5. **TLS Termination** - Establish TLS with client using generated certificates
+6. **HTTP Request Proxying** - Forward decrypted HTTP requests to upstream
+7. **Policy Enforcement Foundation** - Path/method restrictions (basic implementation)
+
+### What Phase 2 Does NOT Include
+
+- NO secret providers (Phase 3)
+- NO authentication strategies (Phase 3/4)
+- NO credential injection (Phase 3)
+- NO advanced policy (rate limiting, quotas - Phase 5+)
+- NO audit logging beyond basic structured logs (Phase 5)
+
+Phase 2 implements **selective TLS termination and service routing** - the foundation for credential injection.
+
+---
+
+## Work Items
+
+### P0: CA Certificate Management
+
+#### CHAP-5v5: Implement CA certificate generation and storage
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P0 (CRITICAL - blocks all MITM work)
+**Dependencies**: Phase 0.4 (config) complete ✓
+**Spec Reference**: PROJECT_SPEC.md lines 66-67 • STATUS-2025-11-30-150747.md lines 325-339
+**Beads Issue**: CHAP-5v5
+
+##### Description
+Generate self-signed CA certificate and private key on first run, store securely in `~/.config/chaperone/` with appropriate file permissions. This CA will sign all dynamically generated leaf certificates for MITM domains.
+
+##### Implementation Details
+
+**File**: `internal/mitm/ca.go`
+
+Key components:
+- `GenerateCA()` - Create RSA 4096-bit private key and self-signed CA certificate
+- `LoadCA()` - Load existing CA from filesystem
+- `StoreCA()` - Save CA to filesystem with correct permissions
+- CA certificate validity: 10 years
+- File locations:
+  - CA private key: `~/.config/chaperone/ca-key.pem` (permissions 0600)
+  - CA certificate: `~/.config/chaperone/ca-cert.pem` (permissions 0644)
+
+**Structure**:
+```go
+type CA struct {
+    cert       *x509.Certificate
+    privateKey *rsa.PrivateKey
+}
+
+func GenerateCA() (*CA, error)
+func LoadCA(keyPath, certPath string) (*CA, error)
+func StoreCA(ca *CA, keyPath, certPath string) error
+func (ca *CA) SignCertificate(template *x509.Certificate) (*tls.Certificate, error)
+```
+
+##### Acceptance Criteria
+- [ ] CA private key generated with RSA 4096-bit strength
+- [ ] CA certificate is valid self-signed certificate
+- [ ] CA certificate has 10-year validity period
+- [ ] CA certificate has BasicConstraints with CA:TRUE
+- [ ] Files stored at `~/.config/chaperone/ca-key.pem` and `ca-cert.pem`
+- [ ] CA key file has 0600 permissions (owner read/write only)
+- [ ] CA cert file has 0644 permissions (owner read/write, others read)
+- [ ] CA loads successfully on subsequent runs (idempotent)
+- [ ] CA can sign leaf certificates
+- [ ] Unit test verifies CA generation
+- [ ] Unit test verifies CA persistence and loading
+- [ ] Unit test verifies CA can sign certificates
+- [ ] make test passes
+- [ ] make test-race passes
+
+##### Technical Notes
+- Use `crypto/x509` and `crypto/rsa` from Go standard library
+- Set CA certificate Subject: CN="Chaperone Local CA"
+- Set KeyUsage: KeyUsageCertSign | KeyUsageCRLSign
+- Set ExtKeyUsage: ExtKeyUsageServerAuth
+- Use Phase 0.3 logging for CA generation events
+- Use Phase 0.2 error types for CA errors
+- Create directory `~/.config/chaperone/` if it doesn't exist
+- Log CA generation and loading with structured JSON logs
+
+---
+
+#### CHAP-w9q: Implement dynamic leaf certificate generation
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P0 (CRITICAL - required for TLS termination)
+**Dependencies**: CHAP-5v5 (CA must exist first)
+**Spec Reference**: PROJECT_SPEC.md lines 66-67 • STATUS-2025-11-30-150747.md lines 325-339
+**Beads Issue**: CHAP-w9q
+
+##### Description
+Generate per-domain TLS certificates on-demand, signed by local CA, with appropriate Subject Alternative Names. Implement certificate caching to avoid regenerating certificates for repeated requests to the same domain.
+
+##### Implementation Details
+
+**File**: `internal/mitm/cert.go`
+
+Certificate generation flow:
+1. Check certificate cache (sync.Map) for domain
+2. If cached and not expired, return cached certificate
+3. If not cached or expired:
+   - Generate RSA 2048-bit private key
+   - Create x509 certificate template with SAN for domain
+   - Sign certificate using CA
+   - Cache certificate with 90-day expiration
+   - Return signed certificate
+4. Handle wildcard domains (*.example.com) if needed
+
+**Structure**:
+```go
+type CertCache struct {
+    cache sync.Map // map[string]*cachedCert
+    ca    *CA
+}
+
+type cachedCert struct {
+    cert      *tls.Certificate
+    expiresAt time.Time
+}
+
+func NewCertCache(ca *CA) *CertCache
+func (c *CertCache) GetCertificate(hostname string) (*tls.Certificate, error)
+func (c *CertCache) generateCertificate(hostname string) (*tls.Certificate, error)
+```
+
+##### Acceptance Criteria
+- [ ] Certificate generated for given hostname
+- [ ] Certificate Subject CN matches hostname
+- [ ] Certificate SAN (Subject Alternative Name) includes hostname
+- [ ] Certificate signed by CA (verifiable with CA cert)
+- [ ] Certificate has 90-day validity period
+- [ ] Certificate uses RSA 2048-bit key
+- [ ] Certificate cached correctly in sync.Map
+- [ ] Subsequent requests for same domain use cached certificate
+- [ ] Expired certificates regenerated automatically
+- [ ] Wildcard certificates work (*.example.com) if needed
+- [ ] Unit test verifies certificate generation
+- [ ] Unit test verifies certificate caching
+- [ ] Unit test verifies certificate expiration
+- [ ] Unit test verifies SAN correctness
+- [ ] make test passes
+- [ ] make test-race passes (0 races in cache access)
+
+##### Technical Notes
+- Use `crypto/x509` and `crypto/rsa` for certificate generation
+- Set certificate KeyUsage: KeyUsageKeyEncipherment | KeyUsageDigitalSignature
+- Set certificate ExtKeyUsage: ExtKeyUsageServerAuth
+- Use serial number tracking (increment per certificate)
+- Cache key: lowercase hostname (case-insensitive matching)
+- Log certificate generation events (without logging private key)
+- Use Phase 0.6 context for certificate generation
+- Handle port stripping: `api.example.com:443` → `api.example.com`
+
+---
+
+### P0: Service Registry & Domain Matching
+
+#### CHAP-qkq: Define Service and Policy configuration structures
+
+**Status**: NOT STARTED
+**Complexity**: LOW
+**Priority**: P0 (CRITICAL - foundation for service routing)
+**Dependencies**: Phase 0.4 (config) complete ✓
+**Spec Reference**: PROJECT_SPEC.md lines 72-85, 160-179 • STATUS-2025-11-30-150747.md lines 409-422
+**Beads Issue**: CHAP-qkq
+
+##### Description
+Design and implement Go structs for service configuration and policy definitions. These structures define how services are configured in the TOML config file and how they're represented in memory.
+
+##### Implementation Details
+
+**File**: `internal/service/types.go`
+
+Service configuration structure maps to TOML config:
+```toml
+[service.openai]
+host_pattern = "api.openai.com"
+auth_strategy = "bearer"
+credential_ref = "env:OPENAI_API_KEY"
+
+[service.openai.policy]
+allowed_methods = ["POST", "GET"]
+allowed_paths = ["/v1/*"]
+max_body_bytes = 2097152
+```
+
+**Structure**:
+```go
+type Service struct {
+    Name          string   // e.g., "openai"
+    HostPattern   string   // e.g., "api.openai.com"
+    AuthStrategy  string   // e.g., "bearer"
+    CredentialRef string   // e.g., "env:OPENAI_API_KEY"
+    Policy        Policy   // Policy configuration
+}
+
+type Policy struct {
+    AllowedMethods []string // e.g., ["POST", "GET"]
+    AllowedPaths   []string // e.g., ["/v1/*", "/responses/*"]
+    MaxBodyBytes   int64    // e.g., 2097152 (2MB)
+    ClientGroups   []string // e.g., ["devtools"] (future)
+}
+
+func (s *Service) Validate() error
+func (p *Policy) Validate() error
+```
+
+##### Acceptance Criteria
+- [ ] Service struct defined with all required fields
+- [ ] Policy struct defined with all required fields
+- [ ] TOML struct tags on all fields (e.g., `toml:"host_pattern"`)
+- [ ] Validate() method checks required fields (HostPattern, AuthStrategy, CredentialRef)
+- [ ] Validate() method checks HostPattern is valid hostname
+- [ ] Validate() method checks MaxBodyBytes >= 0
+- [ ] Validate() method returns clear error messages
+- [ ] Default values applied: MaxBodyBytes=10MB if not set
+- [ ] Unit test verifies valid service config
+- [ ] Unit test verifies invalid configs rejected
+- [ ] Unit test verifies TOML parsing works
+- [ ] make test passes
+
+##### Technical Notes
+- Use `github.com/BurntSushi/toml` for parsing (already in dependencies)
+- HostPattern is exact match for MVP (defer wildcards)
+- AllowedMethods: if empty, allow all methods
+- AllowedPaths: if empty, allow all paths
+- Use Phase 0.2 error types for validation errors
+- Document all fields with godoc comments
+
+---
+
+#### CHAP-a1z: Implement service registry and lookup
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P0 (CRITICAL - required for service routing)
+**Dependencies**: CHAP-qkq (Service structs must exist)
+**Spec Reference**: PROJECT_SPEC.md lines 72-85 • STATUS-2025-11-30-150747.md lines 409-422
+**Beads Issue**: CHAP-a1z
+
+##### Description
+Implement service registry that stores and looks up services by hostname. Registry loads services from config file and provides thread-safe lookup for request routing.
+
+##### Implementation Details
+
+**File**: `internal/service/registry.go`
+
+Registry design:
+- Map-based storage: `map[string]*Service` keyed by lowercase hostname
+- Exact match for MVP (defer wildcard/regex matching)
+- Case-insensitive hostname matching
+- Port stripping: `api.example.com:443` → `api.example.com`
+- Thread-safe for concurrent reads (read-only after initialization for MVP)
+- Load services from config at startup
+
+**Structure**:
+```go
+type Registry struct {
+    services map[string]*Service
+    mu       sync.RWMutex
+}
+
+func NewRegistry() *Registry
+func (r *Registry) Register(service *Service) error
+func (r *Registry) Lookup(hostname string) (*Service, bool)
+func (r *Registry) LoadFromConfig(cfg *config.Config) error
+func (r *Registry) ListAll() []*Service
+```
+
+##### Acceptance Criteria
+- [ ] Services register successfully with Register()
+- [ ] Lookup() returns correct service for exact hostname match
+- [ ] Lookup() is case-insensitive (api.example.com == API.EXAMPLE.COM)
+- [ ] Lookup() strips port from hostname (api.example.com:443 → api.example.com)
+- [ ] Missing services return (nil, false) from Lookup()
+- [ ] Duplicate service registration returns error
+- [ ] LoadFromConfig() loads all services from config file
+- [ ] LoadFromConfig() validates all services
+- [ ] Thread-safe for concurrent reads (verified with -race)
+- [ ] Unit test verifies service registration
+- [ ] Unit test verifies service lookup (exact match)
+- [ ] Unit test verifies case-insensitive matching
+- [ ] Unit test verifies port stripping
+- [ ] Unit test verifies concurrent access
+- [ ] make test passes
+- [ ] make test-race passes
+
+##### Technical Notes
+- Use `sync.RWMutex` for thread safety
+- Normalize hostname to lowercase in Register() and Lookup()
+- Use `net.SplitHostPort()` for port stripping (handle errors)
+- Log service registration events
+- Use Phase 0.3 logging for registry events
+- Use Phase 0.2 errors for duplicate registration
+- Return clear error if service invalid
+
+---
+
+#### CHAP-3ot: Implement domain matching logic
+
+**Status**: NOT STARTED
+**Complexity**: LOW
+**Priority**: P0 (CRITICAL - decides MITM vs tunnel)
+**Dependencies**: CHAP-a1z (Registry must exist)
+**Spec Reference**: PROJECT_SPEC.md lines 61-70 • STATUS-2025-11-30-150747.md lines 325-339
+**Beads Issue**: CHAP-3ot
+
+##### Description
+Implement logic to determine if a domain should be MITM'd based on service configuration. This is the critical decision point that routes requests to either MITM (for credential injection) or transparent tunnel (for non-configured domains).
+
+##### Implementation Details
+
+**File**: `internal/service/matcher.go`
+
+Domain matching flow:
+1. Extract hostname from CONNECT request
+2. Strip port from hostname
+3. Normalize to lowercase
+4. Lookup in service registry
+5. Return true if service exists, false otherwise
+6. Log matching decisions
+
+**Structure**:
+```go
+func ShouldMITM(registry *Registry, hostname string) bool
+func normalizeHostname(hostname string) string
+```
+
+##### Acceptance Criteria
+- [ ] ShouldMITM() returns true for configured domains
+- [ ] ShouldMITM() returns false for non-configured domains
+- [ ] Case-insensitive matching works
+- [ ] Port stripping works (api.example.com:443 → api.example.com)
+- [ ] Logs matching decision (MITM or tunnel) with hostname
+- [ ] Unit test verifies configured domain returns true
+- [ ] Unit test verifies non-configured domain returns false
+- [ ] Unit test verifies case-insensitive matching
+- [ ] Unit test verifies port handling
+- [ ] make test passes
+
+##### Technical Notes
+- Exact hostname matching only for MVP
+- Defer wildcard matching (*.example.com) to post-MVP
+- Defer regex matching to post-MVP
+- Use Phase 0.3 logging for matching decisions
+- Return false (tunnel) on any error (safe default)
+- Next phase will add wildcard and regex support
+
+---
+
+### P0: TLS Termination & HTTP Proxying
+
+#### CHAP-e4n: Implement TLS handshake with client (MITM mode)
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P0 (CRITICAL - enables TLS termination)
+**Dependencies**: CHAP-w9q (cert generation), CHAP-3ot (domain matching), CHAP-b2i (tunnel handler exists from Phase 1)
+**Spec Reference**: PROJECT_SPEC.md lines 61-70, 138-153 • STATUS-2025-11-30-150747.md lines 325-339
+**Beads Issue**: CHAP-e4n
+
+##### Description
+Modify the existing CONNECT tunnel handler (from Phase 1) to check if a domain should be MITM'd. If yes, establish TLS connection with client using dynamically generated certificate. If no, fall back to transparent tunnel (existing Phase 1 behavior).
+
+##### Implementation Details
+
+**File**: `internal/proxy/tunnel.go` (modify existing from Phase 1)
+
+TLS handshake flow:
+1. Receive CONNECT request (existing code)
+2. Check if domain should be MITM'd using service matcher
+3. If MITM:
+   - Get/generate certificate for domain
+   - Hijack client connection (existing code)
+   - Create `tls.Config` with generated certificate
+   - Wrap hijacked connection with `tls.Server()`
+   - Complete TLS handshake
+   - Read HTTP request from TLS connection
+   - Pass to HTTP proxy handler (new)
+4. If NOT MITM:
+   - Use existing transparent tunnel code (Phase 1)
+
+**Structure** (additions to existing TunnelHandler):
+```go
+type TunnelHandler struct {
+    logger    *slog.Logger
+    dialer    *net.Dialer
+    registry  *service.Registry   // NEW: service registry
+    certCache *mitm.CertCache      // NEW: certificate cache
+}
+
+func (h *TunnelHandler) HandleCONNECT(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+    // NEW: Check if should MITM
+    if service.ShouldMITM(h.registry, r.Host) {
+        return h.handleMITM(ctx, w, r)
+    }
+    // EXISTING: Transparent tunnel
+    return h.handleTransparentTunnel(ctx, w, r)
+}
+
+func (h *TunnelHandler) handleMITM(ctx context.Context, w http.ResponseWriter, r *http.Request) error
+func (h *TunnelHandler) handleTransparentTunnel(ctx context.Context, w http.ResponseWriter, r *http.Request) error
+```
+
+##### Acceptance Criteria
+- [ ] CONNECT request for configured domain triggers MITM
+- [ ] CONNECT request for non-configured domain uses transparent tunnel
+- [ ] Certificate retrieved/generated for MITM domain
+- [ ] Client connection hijacked successfully
+- [ ] TLS handshake completes with client
+- [ ] Client accepts generated certificate (when CA trusted)
+- [ ] HTTP request successfully read from TLS connection
+- [ ] TLS handshake errors logged appropriately
+- [ ] Handshake failure falls back gracefully (or returns 502)
+- [ ] Unit test with mock TLS connection
+- [ ] Integration test with real client (CA trusted)
+- [ ] make test passes
+- [ ] make test-race passes
+
+##### Technical Notes
+- Use `tls.Config` with GetCertificate callback for dynamic cert retrieval
+- Send "200 Connection Established" before TLS handshake (existing behavior)
+- Use Phase 0.6 context for TLS handshake timeout (30s)
+- Log TLS handshake success/failure with hostname and request ID
+- Preserve existing transparent tunnel behavior for non-MITM domains
+- Use Phase 0.2 error types for TLS errors
+
+---
+
+#### CHAP-btx: Implement TLS connection to upstream server
+
+**Status**: NOT STARTED
+**Complexity**: LOW
+**Priority**: P0 (CRITICAL - completes MITM flow)
+**Dependencies**: CHAP-e4n (client TLS must work first)
+**Spec Reference**: PROJECT_SPEC.md lines 99-107, 148-153 • STATUS-2025-11-30-150747.md lines 325-339
+**Beads Issue**: CHAP-btx
+
+##### Description
+Establish standard TLS connection to upstream API server with proper certificate validation using system trust store. This is the outbound leg of the MITM proxy - client TLS terminates at Chaperone, upstream TLS is standard client connection.
+
+##### Implementation Details
+
+**File**: `internal/client/client.go` (new package)
+
+Outbound HTTPS client design:
+- Use system certificate pool (not Chaperone CA)
+- Standard TLS handshake with upstream
+- Connection pooling for performance
+- Proper timeout configuration
+- Respect HTTP_PROXY environment variable (enterprise proxy support)
+- NEVER set InsecureSkipVerify
+
+**Structure**:
+```go
+type Client struct {
+    httpClient *http.Client
+    logger     *slog.Logger
+}
+
+func NewClient(logger *slog.Logger) *Client
+func (c *Client) Do(req *http.Request) (*http.Response, error)
+```
+
+##### Acceptance Criteria
+- [ ] TLS connection to upstream succeeds with valid certificate
+- [ ] Certificate validation uses system trust store
+- [ ] Expired/invalid upstream certificates rejected (connection fails)
+- [ ] Connection pooling enabled (MaxIdleConnsPerHost: 100)
+- [ ] Timeouts enforced (30s connect, 60s read/write)
+- [ ] HTTP/2 support enabled (automatic with Go http.Client)
+- [ ] HTTP_PROXY environment variable respected (for enterprise proxies)
+- [ ] Connection establishment logged
+- [ ] Unit test with mock upstream server
+- [ ] Integration test with real API (google.com)
+- [ ] make test passes
+- [ ] make test-race passes
+
+##### Technical Notes
+- Use `http.DefaultTransport` as base, customize timeouts
+- Use `tls.Config` with system cert pool: `x509.SystemCertPool()`
+- Set `DialContext` timeout: 30 seconds
+- Set `TLSHandshakeTimeout`: 10 seconds
+- Set `ResponseHeaderTimeout`: 60 seconds
+- Log connection errors clearly (cert validation, timeout, network)
+- Use Phase 0.3 logging for client events
+- This client is used for ALL upstream connections (MITM and future auth flows)
+
+---
+
+#### CHAP-90r: Implement HTTP request proxying through MITM
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P0 (CRITICAL - completes request flow)
+**Dependencies**: CHAP-e4n (client TLS), CHAP-btx (upstream client)
+**Spec Reference**: PROJECT_SPEC.md lines 138-153 • STATUS-2025-11-30-150747.md lines 325-339
+**Beads Issue**: CHAP-90r
+
+##### Description
+Forward decrypted HTTP request from client to upstream server and proxy response back through client TLS connection. This completes the MITM flow: client TLS → decrypt → read HTTP → forward to upstream → get response → send to client.
+
+##### Implementation Details
+
+**File**: `internal/proxy/mitm_handler.go` (new file)
+
+HTTP proxying flow:
+1. Read HTTP request from client TLS connection
+2. Parse request (method, path, headers, body)
+3. Create new upstream request (clone headers, preserve body)
+4. Forward request to upstream using outbound client
+5. Receive response from upstream
+6. Stream response back to client TLS connection
+7. Preserve all HTTP headers, status codes, chunked encoding
+8. Handle request/response errors gracefully
+9. Log request/response metadata (without logging sensitive headers)
+
+**Structure**:
+```go
+type MITMHandler struct {
+    client   *client.Client
+    logger   *slog.Logger
+    registry *service.Registry
+}
+
+func NewMITMHandler(client *client.Client, logger *slog.Logger, registry *service.Registry) *MITMHandler
+func (h *MITMHandler) ProxyRequest(ctx context.Context, clientConn *tls.Conn, hostname string) error
+```
+
+##### Acceptance Criteria
+- [ ] HTTP request successfully read from client TLS connection
+- [ ] Request parsed correctly (method, path, headers, body)
+- [ ] Request forwarded to upstream with all headers preserved
+- [ ] Response streamed back to client without buffering (io.Copy)
+- [ ] Status codes forwarded correctly (200, 404, 500, etc.)
+- [ ] Headers preserved accurately (Content-Type, Content-Length, etc.)
+- [ ] Chunked encoding works (Transfer-Encoding: chunked)
+- [ ] Large responses (10MB+) work without memory issues
+- [ ] Request/response errors handled gracefully (502 Bad Gateway on upstream error)
+- [ ] Connection cleanup happens properly on both sides
+- [ ] No memory leaks with streaming (verified with pprof or long-running test)
+- [ ] Logs request metadata (method, path, status, duration)
+- [ ] Does NOT log sensitive headers (Authorization - future work)
+- [ ] Unit test with mock connections
+- [ ] Integration test with real API
+- [ ] make test passes
+- [ ] make test-race passes
+
+##### Technical Notes
+- Use `http.ReadRequest()` to parse HTTP from client TLS connection
+- Use `bufio.Reader` for efficient request reading
+- Clone request headers to new upstream request
+- Use `io.Copy()` for body streaming (handles backpressure)
+- Preserve hop-by-hop headers correctly (Connection, Transfer-Encoding)
+- Use Phase 0.6 context for request timeout
+- Log with request ID from Phase 0.6 context
+- This handler does NOT do credential injection yet (Phase 3)
+
+---
+
+### P1: Policy Enforcement (Basic)
+
+#### CHAP-c2s: Implement path and method policy enforcement
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P1 (HIGH - required for security)
+**Dependencies**: CHAP-a1z (service registry), CHAP-90r (HTTP handler)
+**Spec Reference**: PROJECT_SPEC.md lines 166-179 • STATUS-2025-11-30-150747.md lines 486-490
+**Beads Issue**: CHAP-c2s
+
+##### Description
+Implement policy enforcement for allowed paths and methods, returning 403 Forbidden for violations. This provides basic security by restricting which paths and HTTP methods can be proxied for each service.
+
+##### Implementation Details
+
+**File**: `internal/service/policy.go`
+
+Policy enforcement flow:
+1. After reading HTTP request, before forwarding to upstream
+2. Get service from registry
+3. Check if request method in AllowedMethods (if configured)
+4. Check if request path matches AllowedPaths glob patterns (if configured)
+5. Check if request body size <= MaxBodyBytes (if configured)
+6. If any check fails, return 403 Forbidden with clear error message
+7. If all checks pass, continue to upstream forwarding
+
+**Structure**:
+```go
+type PolicyEnforcer struct {
+    logger *slog.Logger
+}
+
+func NewPolicyEnforcer(logger *slog.Logger) *PolicyEnforcer
+func (e *PolicyEnforcer) EnforcePolicy(req *http.Request, policy Policy) error
+func (e *PolicyEnforcer) checkMethod(method string, allowedMethods []string) bool
+func (e *PolicyEnforcer) checkPath(path string, allowedPaths []string) bool
+func (e *PolicyEnforcer) checkBodySize(contentLength int64, maxBytes int64) bool
+```
+
+##### Acceptance Criteria
+- [ ] Allowed methods enforced (POST, GET, etc.)
+- [ ] Disallowed methods return 403 Forbidden
+- [ ] Allowed paths enforced with glob matching (/v1/\* matches /v1/chat)
+- [ ] Disallowed paths return 403 Forbidden
+- [ ] Body size limit enforced (Content-Length check)
+- [ ] Oversized bodies return 413 Payload Too Large
+- [ ] Empty allowlists allow all (if AllowedMethods=[], allow all methods)
+- [ ] Policy violations logged with details (method, path, size)
+- [ ] Unit test verifies method enforcement
+- [ ] Unit test verifies path glob matching
+- [ ] Unit test verifies body size enforcement
+- [ ] Unit test verifies empty allowlist behavior
+- [ ] Integration test verifies 403 responses
+- [ ] make test passes
+
+##### Technical Notes
+- Use glob matching for paths (implement simple glob: `/v1/*` matches `/v1/anything`)
+- Match exact paths if no wildcard: `/v1/chat` matches only `/v1/chat`
+- Case-sensitive path matching (HTTP paths are case-sensitive)
+- Check Content-Length header for body size (before reading body)
+- Return clear error messages: "method POST not allowed", "path /admin not allowed"
+- Use Phase 0.2 error types for policy violations
+- Log policy violations with request ID
+
+---
+
+### P1: Integration & Testing
+
+#### CHAP-rtn: Write integration test for MITM with trusted CA
+
+**Status**: NOT STARTED
+**Complexity**: MEDIUM
+**Priority**: P1 (HIGH - validates Phase 2 works)
+**Dependencies**: All Phase 2 work items above
+**Spec Reference**: PROJECT_SPEC.md lines 61-70 • STATUS-2025-11-30-150747.md lines 594-608
+**Beads Issue**: CHAP-rtn
+
+##### Description
+Create integration test that validates selective MITM works for configured domain (api.openai.com) with generated certificate. This is the comprehensive end-to-end test for Phase 2 completion.
+
+##### Implementation Details
+
+**File**: `test/integration/mitm_test.go`
+
+Test flow:
+1. Generate test CA and store in temp directory
+2. Configure test service for test domain (e.g., httpbin.org)
+3. Start chaperone server with MITM enabled
+4. Create HTTP client that trusts test CA
+5. Make HTTPS request through proxy to configured domain
+6. Verify request reaches upstream (check response)
+7. Verify certificate presented is signed by test CA
+8. Test non-configured domain still uses transparent tunnel
+9. Test policy enforcement (disallowed path returns 403)
+10. Clean up all resources
+
+**Test Structure**:
+```go
+func TestSelectiveMITM(t *testing.T)
+func TestMITMCertificateTrust(t *testing.T)
+func TestTransparentTunnelForNonConfiguredDomains(t *testing.T)
+func TestPolicyEnforcement(t *testing.T)
+```
+
+##### Acceptance Criteria
+- [ ] Test generates and trusts test CA
+- [ ] MITM works for configured domain (httpbin.org or similar)
+- [ ] HTTP request/response work end-to-end through MITM
+- [ ] Certificate presented is signed by test CA (verify signature)
+- [ ] Non-configured domains still use transparent tunnel (no MITM)
+- [ ] No certificate errors in test client
+- [ ] Policy violations return 403 with clear error
+- [ ] Test cleans up all resources (server, temp files)
+- [ ] Test runs in CI environment
+- [ ] make test includes integration tests
+- [ ] make test-race passes
+
+##### Technical Notes
+- Use httptest helpers from Phase 0.5
+- Create test config in temp directory
+- Use `x509.SystemCertPool()` and add test CA for client trust
+- Verify certificate chain: leaf cert → test CA
+- Test against stable domain (httpbin.org, postman-echo.com)
+- Set reasonable timeouts (10s for test)
+- Use t.Cleanup() for resource cleanup
+- This test is the Phase 2 completion gate
+
+---
+
+#### Wire MITM into `chaperone run` Command
+
+**Status**: NOT STARTED
+**Complexity**: LOW
+**Priority**: P1 (HIGH - makes Phase 2 usable)
+**Dependencies**: All Phase 2 work items above
+**Spec Reference**: PROJECT_SPEC.md lines 237-241 • STATUS-2025-11-30-150747.md lines 70-75
+
+##### Description
+Integrate MITM components into the existing `chaperone run` command. Initialize CA, load services, create certificate cache, and wire into proxy server.
+
+##### Implementation Details
+
+**File**: `cmd/chaperone/cmd/run.go` (modify existing)
+
+Changes needed:
+1. Initialize or load CA certificate
+2. Create certificate cache
+3. Load services from config into registry
+4. Wire registry and cert cache into proxy server
+5. Initialize MITM handler
+6. Pass MITM components to tunnel handler
+
+**Additions to run.go**:
+```go
+// Initialize CA
+ca, err := mitm.LoadOrGenerateCA(caKeyPath, caCertPath)
+if err != nil {
+    return fmt.Errorf("failed to initialize CA: %w", err)
+}
+
+// Create certificate cache
+certCache := mitm.NewCertCache(ca)
+
+// Load services
+registry := service.NewRegistry()
+if err := registry.LoadFromConfig(cfg); err != nil {
+    return fmt.Errorf("failed to load services: %w", err)
+}
+
+// Create MITM handler
+mitmHandler := proxy.NewMITMHandler(client, logger, registry)
+
+// Create proxy server with MITM support
+proxyServer := proxy.New(&cfg.Server, logger, shutdownMgr, registry, certCache, mitmHandler)
+```
+
+##### Acceptance Criteria
+- [ ] `chaperone run --config <file>` initializes CA on first run
+- [ ] CA certificate path logged on startup
+- [ ] Services loaded from config file
+- [ ] Service loading errors reported clearly
+- [ ] Proxy server starts with MITM support
+- [ ] Manual test: MITM works for configured domain
+- [ ] Manual test: Transparent tunnel works for non-configured domain
+- [ ] CLI test updated to validate MITM integration
+- [ ] make test passes
+
+##### Technical Notes
+- CA path: `~/.config/chaperone/` (use os.UserConfigDir())
+- Log CA certificate location for user to trust manually
+- Validate config file has at least one service defined
+- Use Phase 0.3 logging for initialization events
+- Fail fast if service config invalid
+- Next phase will add authentication strategies
+
+---
+
+## Dependency Graph
+
+```
+Phase 0, 0.9, 1 (Foundation + CLI + Basic Proxy) - COMPLETE
+    │
+    ├─→ CHAP-qkq (Service/Policy Structs)
+    │       │
+    │       └─→ CHAP-a1z (Service Registry)
+    │               │
+    │               └─→ CHAP-3ot (Domain Matching)
+    │                       │
+    ├─→ CHAP-5v5 (CA Generation)                   │
+    │       │                                       │
+    │       └─→ CHAP-w9q (Cert Generation)         │
+    │               │                               │
+    │               └─→ CHAP-e4n (Client TLS) ←────┘
+    │                       │
+    │                       └─→ CHAP-btx (Upstream Client)
+    │                               │
+    │                               └─→ CHAP-90r (HTTP Proxying)
+    │                                       │
+    │                                       └─→ CHAP-c2s (Policy Enforcement)
+    │                                               │
+    └───────────────────────────────────────────────┴─→ CHAP-rtn (Integration Test)
+                                                            │
+                                                            └─→ Wire into CLI
+```
+
+**Execution Order** (with parallelization opportunities):
+
+**Sprint 1 (Parallel)**:
+1. CHAP-qkq (Service structs) - independent
+2. CHAP-5v5 (CA generation) - independent
+
+**Sprint 2 (Sequential from Sprint 1)**:
+3. CHAP-a1z (Service registry) - depends on CHAP-qkq
+4. CHAP-w9q (Cert generation) - depends on CHAP-5v5
+
+**Sprint 3**:
+5. CHAP-3ot (Domain matching) - depends on CHAP-a1z
+
+**Sprint 4**:
+6. CHAP-e4n (Client TLS handshake) - depends on CHAP-w9q, CHAP-3ot
+
+**Sprint 5**:
+7. CHAP-btx (Upstream client) - depends on CHAP-e4n
+
+**Sprint 6**:
+8. CHAP-90r (HTTP proxying) - depends on CHAP-btx
+
+**Sprint 7**:
+9. CHAP-c2s (Policy enforcement) - depends on CHAP-90r
+
+**Sprint 8 (Final)**:
+10. CHAP-rtn (Integration test) - depends on all above
+11. Wire into CLI - depends on all above
+
+---
+
+## Testing Strategy
+
+### Unit Tests (per component)
+
+**CA Management** (`internal/mitm/ca_test.go`):
+- CA generation with correct key size and validity
+- CA persistence and loading
+- CA signing of leaf certificates
+
+**Certificate Generation** (`internal/mitm/cert_test.go`):
+- Leaf certificate generation for hostname
+- Certificate caching (hit/miss)
+- Certificate expiration and regeneration
+- SAN correctness
+
+**Service Registry** (`internal/service/registry_test.go`):
+- Service registration and lookup
+- Case-insensitive matching
+- Port stripping
+- Concurrent access (with -race)
+
+**Domain Matching** (`internal/service/matcher_test.go`):
+- Configured domain returns true
+- Non-configured domain returns false
+- Case and port handling
+
+**TLS Handshake** (`internal/proxy/tunnel_test.go`):
+- MITM mode with mock TLS connection
+- Transparent tunnel mode (existing Phase 1 tests)
+- Domain routing logic
+
+**Outbound Client** (`internal/client/client_test.go`):
+- TLS connection to mock upstream
+- Certificate validation
+- Timeout enforcement
+
+**HTTP Proxying** (`internal/proxy/mitm_handler_test.go`):
+- Request parsing and forwarding
+- Response streaming
+- Header preservation
+- Error handling
+
+**Policy Enforcement** (`internal/service/policy_test.go`):
+- Method allowlist
+- Path glob matching
+- Body size limits
+
+### Integration Tests
+
+**MITM Flow** (`test/integration/mitm_test.go`):
+- Complete MITM flow with trusted CA
+- Selective MITM vs transparent tunnel
+- Certificate trust validation
+- Policy enforcement end-to-end
+
+### Manual Tests
+
+After Phase 2 completion, these manual tests should work:
+
+```bash
+# Test 1: Initialize and start server
+./chaperone init openai
+./chaperone run --config chaperone.toml
+# Expected: CA generated, services loaded, server starts
+
+# Test 2: Trust CA certificate
+# macOS:
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.config/chaperone/ca-cert.pem
+# Linux:
+sudo cp ~/.config/chaperone/ca-cert.pem /usr/local/share/ca-certificates/chaperone-ca.crt
+sudo update-ca-certificates
+
+# Test 3: MITM for configured domain
+export HTTPS_PROXY=http://127.0.0.1:4010
+curl -v https://api.openai.com/v1/models
+# Expected: MITM occurs, request decrypted (NO auth yet, will get 401)
+
+# Test 4: Transparent tunnel for non-configured domain
+curl -v https://www.google.com
+# Expected: Transparent tunnel, no MITM
+
+# Test 5: Policy enforcement
+curl -X DELETE https://api.openai.com/v1/models
+# Expected: 403 Forbidden (DELETE not allowed)
+
+curl https://api.openai.com/admin/secret
+# Expected: 403 Forbidden (path not allowed)
+```
+
+### Test Coverage Goals
+- Unit tests: 85%+ coverage for all new code
+- Integration tests: Cover MITM flow, transparent tunnel, policy enforcement
+- Race detector: 0 races (make test-race must pass)
+- All Phase 0 and Phase 1 tests continue to pass (139 tests)
+
+---
+
+## Acceptance Criteria for Phase 2 Completion
+
+Phase 2 is COMPLETE when ALL of the following are true:
+
+### Functionality
+- [ ] CA certificate generated and stored on first run
+- [ ] CA certificate loads successfully on subsequent runs
+- [ ] Dynamic certificates generated and cached per domain
+- [ ] TLS termination works for configured domains (api.openai.com)
+- [ ] HTTP requests successfully decrypted and proxied
+- [ ] Transparent tunneling works for non-configured domains (google.com)
+- [ ] Service registry loads services from config
+- [ ] Host pattern matching works (exact match)
+- [ ] Policy enforcement blocks disallowed methods (403)
+- [ ] Policy enforcement blocks disallowed paths (403)
+
+### Testing
+- [ ] All unit tests pass (make test)
+- [ ] All integration tests pass (MITM test works)
+- [ ] Race detector passes (make test-race)
+- [ ] Manual test with trusted CA works (curl through proxy)
+- [ ] Phase 0, 0.9, 1 tests continue to pass (139 tests)
+
+### Quality
+- [ ] All logs use Phase 0.3 structured JSON logging
+- [ ] All errors use Phase 0.2 error types
+- [ ] All code uses Phase 0.6 context propagation
+- [ ] CA operations logged clearly
+- [ ] Certificate generation logged (without private keys)
+- [ ] MITM vs tunnel decisions logged
+- [ ] Policy violations logged with details
+- [ ] Code passes golangci-lint
+- [ ] Code passes go vet
+
+### Security
+- [ ] CA private key has 0600 permissions
+- [ ] CA certificate has 0644 permissions
+- [ ] Upstream TLS uses system trust (no InsecureSkipVerify)
+- [ ] Policy enforcement prevents unauthorized access
+- [ ] No sensitive data logged (credentials, private keys)
+
+### Documentation
+- [ ] Code includes clear comments
+- [ ] Public functions have godoc
+- [ ] README updated with CA trust instructions
+- [ ] README updated with Phase 2 completion status
+- [ ] Integration test documents MITM workflow
+
+---
+
+## Risk Assessment
+
+### Medium Risks
+
+**1. CA Trust Workflow**
+- **Risk**: Users must manually trust CA certificate for MITM to work
+- **Impact**: Poor user experience if trust instructions unclear
+- **Mitigation**:
+  - Clear README with platform-specific trust instructions
+  - Log CA certificate path prominently on startup
+  - Provide troubleshooting guide for certificate errors
+
+**2. TLS Handshake Complexity**
+- **Risk**: TLS handshake errors may be difficult to debug
+- **Impact**: Users may see cryptic "certificate invalid" errors
+- **Mitigation**:
+  - Detailed error logging for all TLS failures
+  - Clear error messages distinguishing CA trust issues from other problems
+  - Integration test validates handshake works when CA trusted
+
+**3. Certificate Caching Concurrency**
+- **Risk**: Race conditions in certificate cache under high load
+- **Impact**: Potential panics or incorrect certificates served
+- **Mitigation**:
+  - Use sync.Map (thread-safe by design)
+  - Comprehensive race detector testing
+  - Unit tests for concurrent access
+
+### Low Risks
+
+**1. Domain Matching Logic**
+- **Risk**: Exact match only (no wildcards) may be limiting
+- **Impact**: Users need one service config per subdomain
+- **Mitigation**: Documented as MVP limitation, wildcard support planned for post-MVP
+
+**2. Policy Enforcement Gaps**
+- **Risk**: Basic path/method checks may not cover all security needs
+- **Impact**: Additional restrictions (rate limiting, quotas) deferred
+- **Mitigation**: Document as Phase 5 work, basic enforcement sufficient for MVP
+
+**3. Performance Overhead**
+- **Risk**: TLS termination adds latency vs transparent tunnel
+- **Impact**: Slower request processing for MITM'd domains
+- **Mitigation**:
+  - Certificate caching minimizes overhead
+  - Connection pooling to upstream
+  - Acceptable tradeoff for credential injection capability
+
+---
+
+## Estimated Effort
+
+**Total Complexity**: HIGH
+
+**Work Items** (in execution order):
+1. CHAP-qkq (Service structs): LOW - 0.5 session
+2. CHAP-5v5 (CA generation): MEDIUM - 1 session
+3. CHAP-a1z (Service registry): MEDIUM - 1 session
+4. CHAP-w9q (Cert generation): MEDIUM - 1 session
+5. CHAP-3ot (Domain matching): LOW - 0.5 session
+6. CHAP-e4n (Client TLS): MEDIUM - 1 session
+7. CHAP-btx (Upstream client): LOW - 0.5 session
+8. CHAP-90r (HTTP proxying): MEDIUM - 1 session
+9. CHAP-c2s (Policy enforcement): MEDIUM - 1 session
+10. CHAP-rtn (Integration test): MEDIUM - 1 session
+11. CLI Integration: LOW - 0.5 session
+
+**Total Estimate**: 9 focused work sessions
+
+**Parallelization Opportunity**: CHAP-qkq and CHAP-5v5 can be done in parallel (saves 0.5 session)
+
+**Realistic Estimate**: 5-7 focused work sessions accounting for parallelization and integration
+
+**Definition of "Focused Session"**: 2-3 hours of uninterrupted development time following test-first discipline.
+
+---
+
+## Success Metrics
+
+Phase 2 success is measured by:
+
+1. **Functional**: Can selectively MITM configured domains and decrypt HTTP requests
+2. **Tested**: All Phase 0/0.9/1 tests + new Phase 2 tests passing (estimated 180+ total tests)
+3. **Integrated**: Works via `chaperone run` command with service config
+4. **Secure**: CA trust workflow documented, policy enforcement working
+5. **Quality**: Maintains Phase 0 quality standards (clean code, good tests, 0 debt)
+
+**Key Indicator**: User can:
+1. Trust CA certificate
+2. Configure service for api.openai.com
+3. Make HTTPS request through proxy
+4. See request MITM'd in logs (decrypted but NOT authenticated yet - returns 401)
+5. Make request to google.com and see transparent tunnel in logs
+
+---
+
+## What Comes After Phase 2
+
+Phase 2 unblocks:
+
+**Phase 3: Basic Authentication** (next priority)
+- Environment variable secret provider (env:OPENAI_API_KEY)
+- Bearer token auth strategy (Authorization: Bearer header)
+- File-based secret provider (file:/path/to/secret)
+- End-to-end test: CONNECT → MITM → service lookup → secret fetch → auth inject → upstream
+
+**Success Criteria for Phase 3**:
+- [ ] Can retrieve secrets from environment variables
+- [ ] Can inject Bearer token into Authorization header
+- [ ] Full workflow works: `chaperone run` → proxied request → credential injection → upstream receives authenticated request
+- [ ] OpenAI API request succeeds with injected credentials
+
+Phase 2 is the **critical enabler** for credential injection. Without MITM, Chaperone cannot modify requests. Without service routing, Chaperone cannot determine which domains to authenticate.
+
+---
+
+## Summary for Implementation
+
+**START HERE:**
+1. CHAP-qkq: Define Service/Policy structs (easy win, enables other work)
+2. CHAP-5v5: Generate CA certificate (foundation for all TLS work)
+
+**THEN BUILD:**
+3. Service registry and domain matching (routing logic)
+4. Certificate generation and TLS handshake (MITM capability)
+5. HTTP proxying and policy enforcement (request flow)
+
+**VALIDATE:**
+6. Integration test (proves Phase 2 complete)
+7. Wire into CLI (makes it usable)
+
+**MAINTAIN DISCIPLINE:**
+- Write tests FIRST for each component
+- Run `make test` after every change
+- Run `make test-race` before committing
+- Keep test coverage >= 85%
+- Log decisions clearly (MITM vs tunnel, policy violations)
+- Use Phase 0 infrastructure consistently
+
+---
+
+**Generated:** 2025-11-30 15:09:00
+**Status Planner:** status-planner agent
+**Ready to Start:** YES (all dependencies met - Phase 0, 0.9, 1 complete)
+**Recommended Action:** Begin with parallel work on CHAP-qkq (Service structs) and CHAP-5v5 (CA generation)
+**Next Plan:** After Phase 2 completion, generate PLAN for Phase 3 (Basic Authentication)

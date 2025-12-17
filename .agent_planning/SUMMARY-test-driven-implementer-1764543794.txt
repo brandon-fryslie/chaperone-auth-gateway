@@ -1,0 +1,120 @@
+Agent: test-driven-implementer | 2025-11-30 15:58:00
+Tests: 27 passing, 0 failing | Files: 6 | Commits: 0
+Status: in_progress
+
+## Implementation Progress - Phase 2 MITM & Service Routing
+
+### Completed Work Items
+
+#### CHAP-qkq: Service & Policy Structures ✓
+- **File**: internal/service/types.go
+- **Tests Passing**: 
+  - TestServiceValidation (4 subtests)
+  - TestPolicyValidation (3 subtests)  
+  - TestPolicyDefaultValues (1 subtest)
+- **Implementation**:
+  - Service.Validate() - validates required fields (HostPattern, AuthStrategyRef, CredentialRef)
+  - Policy.Validate() - validates MaxBodyBytes >= 0
+  - Policy.ApplyDefaults() - sets MaxBodyBytes to 10MB if unset
+  - Uses existing errors.ConfigError for validation failures
+
+#### CHAP-a1z: Service Registry ✓
+- **File**: internal/service/registry_impl.go
+- **Tests Passing**: TestRegistryBasicOperations (6 subtests)
+  - register_and_lookup
+  - case_insensitive_lookup
+  - port_stripping
+  - missing_service
+  - duplicate_registration
+  - list_all
+- **Implementation**:
+  - Registry struct with sync.RWMutex for thread safety
+  - Register() - adds services, validates, detects duplicates
+  - Lookup() - case-insensitive, port-stripping hostname matching
+  - ListAll() - returns all registered services
+  - normalizeHostname() - lowercase + port stripping using net.SplitHostPort
+- **Race Detector**: PASS (0 races detected)
+
+#### CHAP-3ot: Domain Matching ✓
+- **File**: internal/service/matcher.go
+- **Tests Passing**: TestDomainMatchingImplementation (5 subtests)
+  - configured_domain_returns_true
+  - non_configured_domain_returns_false
+  - case_insensitive_matching
+  - port_handling
+  - nil_registry_returns_false
+- **Implementation**:
+  - ShouldMITM() - determines if hostname should be MITM'd
+  - Uses ServiceRegistry.Lookup() for domain matching
+  - Inherits case-insensitivity and port-stripping from Registry
+
+#### CHAP-c2s: Policy Enforcement ✓
+- **File**: internal/service/policy_enforcer.go
+- **Tests Passing**: TestPolicyEnforcementImplementation (6 subtests)
+  - method_enforcement
+  - path_enforcement
+  - body_size_enforcement
+  - nil_policy_allows_all
+  - exact_path_matching
+  - case_sensitive_path_matching
+- **Implementation**:
+  - Enforcer struct implementing PolicyEnforcer interface
+  - CheckMethod() - validates HTTP method against allowlist
+  - CheckPath() - validates path with glob matching (/v1/*)
+  - CheckBodySize() - validates Content-Length against MaxBodyBytes
+  - matchPath() - supports exact and wildcard (*) matching
+  - Uses errors.PolicyError for violations
+  - Structured logging for all violations
+
+### Files Created
+1. internal/service/types.go (81 lines)
+2. internal/service/registry_impl.go (108 lines)
+3. internal/service/matcher.go (14 lines)
+4. internal/service/policy_enforcer.go (146 lines)
+5. test/service_registry_impl_test.go (147 lines)
+6. test/domain_matching_test.go (72 lines)
+7. test/policy_enforcement_test.go (140 lines)
+
+### Files Modified
+1. test/policy_test.go - Added imports, unskipped validation tests
+
+### Tests Summary
+- **Total Tests Passing**: 27
+- **Service Validation**: 4 tests
+- **Policy Validation**: 4 tests (including defaults)
+- **Registry Operations**: 6 tests
+- **Domain Matching**: 5 tests
+- **Policy Enforcement**: 6 tests
+- **Race Conditions**: 0 detected
+
+### Remaining Work for Phase 2
+
+#### NOT STARTED:
+- CHAP-5v5: CA Certificate Management
+- CHAP-w9q: Dynamic Certificate Generation
+- CHAP-e4n: TLS Handshake (client-side MITM)
+- CHAP-btx: TLS Connection to Upstream
+- CHAP-90r: HTTP Request Proxying
+- CHAP-rtn: Integration Tests
+
+### Key Design Decisions
+
+1. **Error Handling**: Used existing errors.ConfigError and errors.PolicyError types
+2. **Thread Safety**: Registry uses sync.RWMutex for concurrent reads
+3. **Hostname Normalization**: Lowercase + port stripping in a single function
+4. **Policy Defaults**: MaxBodyBytes defaults to 10MB when 0
+5. **Path Matching**: Simple wildcard (*) support via prefix matching
+6. **Logging**: Structured logging for all policy violations
+
+### Next Steps
+
+1. Implement CA certificate generation (CHAP-5v5)
+2. Implement dynamic certificate caching (CHAP-w9q)
+3. These are the critical path for MITM capability
+
+### Quality Metrics
+- All tests pass with -race detector
+- Clear separation of concerns (types, registry, matcher, enforcer)
+- Consistent error handling patterns
+- Proper validation at all entry points
+- Thread-safe concurrent access
