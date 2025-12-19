@@ -67,7 +67,10 @@ func (p *KeychainProvider) Fetch(ctx context.Context, path string) (string, erro
 	// -s: service name
 	// -a: account name
 	// -w: output password only (no other metadata)
-	cmd := exec.CommandContext(ctx, "security", "find-generic-password", "-s", service, "-a", account, "-w")
+	//
+	// Note: service and account are from user configuration (not user input)
+	// and are validated by parseKeychainPath above
+	cmd := exec.CommandContext(ctx, "security", "find-generic-password", "-s", service, "-a", account, "-w") //nolint:gosec // service/account from config, validated above
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

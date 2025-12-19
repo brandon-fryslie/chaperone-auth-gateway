@@ -100,19 +100,16 @@ address = "127.0.0.1"
 port = 4010
 
 [logging]
-level = "info"      # debug, info, warn, error
-format = "json"     # json or text
-output = "stdout"   # stdout or file path
+level = "info"
 
-[services.openai]
+[[services]]
+name = "openai"
 host_pattern = "api.openai.com"
 auth_strategy = "bearer"
 credential_ref = "env:OPENAI_API_KEY"
-allowed_methods = ["GET", "POST"]
-allowed_paths = ["/v1/*"]
-max_body_bytes = 10485760  # 10MB
 
-[services.anthropic]
+[[services]]
+name = "anthropic"
 host_pattern = "api.anthropic.com"
 auth_strategy = "header"
 header_name = "x-api-key"
@@ -129,6 +126,78 @@ allowed_paths = ["/v1/*"]
 | File | `file:/path/to/secret` | `file:~/.secrets/api.key` |
 | Keychain (macOS) | `keychain:service/account` | `keychain:chaperone/openai` |
 | Command | `command:cmd args` | `command:pass show api/openai` |
+
+#### Environment Variables
+
+Store secrets in environment variables:
+
+```bash
+export OPENAI_API_KEY=sk-your-key-here
+```
+
+Configuration:
+```toml
+credential_ref = "env:OPENAI_API_KEY"
+```
+
+#### File-based Secrets
+
+Store secrets in files with strict permissions (0600 or stricter):
+
+```bash
+echo "sk-your-key-here" > ~/.secrets/openai.key
+chmod 600 ~/.secrets/openai.key
+```
+
+Configuration:
+```toml
+credential_ref = "file:~/.secrets/openai.key"
+```
+
+Security notes:
+- Files must have permissions 0600 (rw-------) or stricter (0400)
+- Files with 0644, 0666, 0777, etc. are rejected
+- Maximum file size: 1MB
+- Whitespace is automatically trimmed
+
+#### macOS Keychain
+
+Store secrets in macOS Keychain for maximum security (macOS only):
+
+```bash
+# Add secret to keychain
+security add-generic-password -s chaperone -a openai -w "sk-your-key-here"
+```
+
+Configuration:
+```toml
+credential_ref = "keychain:chaperone/openai"
+```
+
+The format is `keychain:service/account` where:
+- `service` is the keychain service name (e.g., "chaperone")
+- `account` is the account name (e.g., "openai")
+
+Security notes:
+- Only works on macOS
+- Respects keychain access controls
+- May prompt for keychain access on first use
+- Secrets never written to disk in plain text
+- Integration with macOS security features (Touch ID, etc.)
+
+To view/edit keychain items:
+```bash
+# View in Keychain Access app
+open -a "Keychain Access"
+
+# Or use command line
+security find-generic-password -s chaperone -a openai -w
+```
+
+To remove a keychain item:
+```bash
+security delete-generic-password -s chaperone -a openai
+```
 
 ### Authentication Strategies
 
@@ -180,29 +249,30 @@ chaperone --version
 
 ## Development
 
+### Running Tests
+
 ```bash
-# Run tests
-make test
+# Run all tests
+go test ./...
 
-# Run tests with race detector
-make test-race
+# Run with coverage
+go test ./... -coverprofile=coverage.out -coverpkg=./...
+go tool cover -html=coverage.out
 
-# Run linter
-make lint
-
-# Build binary
-make build
+# Run with race detector
+go test ./... -race
 ```
 
-## Requirements
+### Building
 
-- Go 1.25.5 or later
-- macOS, Linux, or Windows
+```bash
+# Build binary
+go build ./cmd/chaperone
+
+# Build with version info
+go build -ldflags "-X main.version=1.0.0" ./cmd/chaperone
+```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions are welcome! Please read the [PROJECT_SPEC.md](PROJECT_SPEC.md) for architecture details before submitting PRs.
+MIT License - see LICENSE file for details
