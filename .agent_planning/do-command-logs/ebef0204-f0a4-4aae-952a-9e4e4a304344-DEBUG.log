@@ -1,0 +1,20 @@
+2025-12-18T10:50:12.188852 ============================================================
+2025-12-18T10:50:12.189624 init.py: SESSION START
+2025-12-18T10:50:12.189966 init.py: session_id=ebef0204-f0a4-4aae-952a-9e4e4a304344
+2025-12-18T10:50:12.190342 init.py: cwd=/Users/bmf/code/chaperone-auth-gateway
+2025-12-18T10:50:12.190515 init.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'hook_event_name', 'source']
+2025-12-18T10:50:12.190967 init.py: hook_event_name=SessionStart
+2025-12-18T10:50:12.191150 init.py: transcript_path=/Users/bmf/.claude/projects/-Users-bmf-code-chaperone-auth-gateway/ebef0204-f0a4-4aae-952a-9e4e4a304344.jsonl
+2025-12-18T10:50:12.191523 init.py: directory exists: .agent_planning/do-command-logs
+2025-12-18T10:50:12.191884 init.py: directory exists: .agent_planning/do-command-logs/partials
+2025-12-18T10:50:12.192063 init.py: initialization complete
+2025-12-19T00:53:20.919648 ============================================================
+2025-12-19T00:53:20.920309 init.py: SESSION START
+2025-12-19T00:53:20.920492 init.py: session_id=ebef0204-f0a4-4aae-952a-9e4e4a304344
+2025-12-19T00:53:20.920833 init.py: cwd=/Users/bmf/code/chaperone-auth-gateway
+2025-12-19T00:53:20.921135 init.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'hook_event_name', 'source']
+2025-12-19T00:53:20.921515 init.py: hook_event_name=SessionStart
+2025-12-19T00:53:20.921722 init.py: transcript_path=/Users/bmf/.claude/projects/-Users-bmf-code-chaperone-auth-gateway/ebef0204-f0a4-4aae-952a-9e4e4a304344.jsonl
+2025-12-19T00:53:20.922249 init.py: directory exists: .agent_planning/do-command-logs
+2025-12-19T00:53:20.922384 init.py: directory exists: .agent_planning/do-command-logs/partials
+2025-12-19T00:53:20.922627 init.py: initialization complete
