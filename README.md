@@ -178,26 +178,79 @@ The format is `keychain:service/account` where:
 - `service` is the keychain service name (e.g., "chaperone")
 - `account` is the account name (e.g., "openai")
 
+##### Complete Example
+
+**1. Store your API key in the Keychain:**
+```bash
+security add-generic-password -s chaperone -a openai -w "sk-your-actual-key-here"
+```
+
+**2. Update `chaperone.toml`:**
+```toml
+[services.openai]
+host_pattern = "api.openai.com"
+auth_strategy = "bearer"
+credential_ref = "keychain:chaperone/openai"
+allowed_methods = ["GET", "POST"]
+allowed_paths = ["/v1/*"]
+```
+
+**3. Run Chaperone:**
+```bash
+./chaperone run --config chaperone.toml
+```
+
+##### Multiple Services
+
+Store and use multiple API keys:
+
+```bash
+# Store multiple keys
+security add-generic-password -s chaperone -a openai -w "sk-openai-key"
+security add-generic-password -s chaperone -a anthropic -w "sk-ant-key"
+security add-generic-password -s chaperone -a github -w "ghp-token"
+```
+
+```toml
+[services.openai]
+host_pattern = "api.openai.com"
+auth_strategy = "bearer"
+credential_ref = "keychain:chaperone/openai"
+
+[services.anthropic]
+host_pattern = "api.anthropic.com"
+auth_strategy = "header:x-api-key"
+credential_ref = "keychain:chaperone/anthropic"
+
+[services.github]
+host_pattern = "api.github.com"
+auth_strategy = "header:Authorization"
+credential_ref = "keychain:chaperone/github"
+```
+
+##### Managing Keychain Secrets
+
+```bash
+# Verify a secret was stored
+security find-generic-password -s chaperone -a openai -w
+
+# View in Keychain Access app
+open -a "Keychain Access"
+
+# Update a secret (just re-add it)
+security add-generic-password -s chaperone -a openai -w "new-key-value"
+
+# Delete a secret
+security delete-generic-password -s chaperone -a openai
+```
+
 Security notes:
 - Only works on macOS
 - Respects keychain access controls
 - May prompt for keychain access on first use
 - Secrets never written to disk in plain text
 - Integration with macOS security features (Touch ID, etc.)
-
-To view/edit keychain items:
-```bash
-# View in Keychain Access app
-open -a "Keychain Access"
-
-# Or use command line
-security find-generic-password -s chaperone -a openai -w
-```
-
-To remove a keychain item:
-```bash
-security delete-generic-password -s chaperone -a openai
-```
+- Application memory never contains the actual API key
 
 ### Authentication Strategies
 

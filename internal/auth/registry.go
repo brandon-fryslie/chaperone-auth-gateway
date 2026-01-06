@@ -40,3 +40,12 @@ func (r *Registry) Get(name string) (AuthStrategy, error) {
 
 	return strategy, nil
 }
+
+// Has checks if a strategy is registered.
+func (r *Registry) Has(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	_, found := r.strategies[name]
+	return found
+}

@@ -45,15 +45,8 @@ func (h *TunnelHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // HandleCONNECT processes a CONNECT request and establishes either a MITM
 // connection or a transparent tunnel based on service configuration.
 func (h *TunnelHandler) HandleCONNECT(ctx context.Context, w http.ResponseWriter, r *http.Request) {
-	// Log the CONNECT request
-	log.Info(ctx, "handling CONNECT request",
-		"host", r.Host,
-		"remote_addr", r.RemoteAddr,
-	)
-
 	// Check if we should MITM this domain
 	if h.registry != nil && service.ShouldMITM(h.registry, r.Host) {
-		log.Info(ctx, "performing MITM for configured domain", "host", r.Host)
 		h.handleMITM(ctx, w, r)
 	} else {
 		log.Debug(ctx, "using transparent tunnel for non-configured domain", "host", r.Host)
@@ -121,8 +114,6 @@ func (h *TunnelHandler) handleMITM(ctx context.Context, w http.ResponseWriter, r
 		return
 	}
 
-	log.Info(ctx, "MITM TLS handshake successful", "host", r.Host)
-
 	// Proxy HTTP requests through MITM handler
 	// Pass the full r.Host (with port) so the handler can construct correct upstream URLs
 	if err := h.mitmHandler.ProxyRequest(ctx, tlsConn, r.Host); err != nil {
@@ -166,8 +157,6 @@ func (h *TunnelHandler) handleTransparentTunnel(ctx context.Context, w http.Resp
 		log.Error(ctx, "failed to send CONNECT response", err)
 		return
 	}
-
-	log.Info(ctx, "transparent tunnel established", "host", r.Host)
 
 	// Copy data bidirectionally between client and upstream
 	errChan := make(chan error, 2)

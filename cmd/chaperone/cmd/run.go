@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bmf/chaperone/internal/auth"
@@ -21,6 +22,7 @@ import (
 
 var (
 	configPath string
+	version    = "dev" // Set during build
 )
 
 // runCmd represents the run command
@@ -87,21 +89,32 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	// Load or generate CA certificate
+	// Check if CA files already exist
+	_, keyErr := os.Stat(caKeyPath)
+	_, certErr := os.Stat(caCertPath)
+	isNewCA := keyErr != nil || certErr != nil
+
 	ca, err := mitm.LoadOrGenerateCA(caKeyPath, caCertPath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize CA: %w", err)
 	}
 
-	log.Info(ctx, "CA certificate initialized",
-		"cert_path", caCertPath,
-		"key_path", caKeyPath,
-	)
-	log.Info(ctx, "Trust this CA in your browser/system to avoid certificate warnings",
-		"cert_path", caCertPath,
-	)
+	if isNewCA {
+		log.Info(ctx, "generated new CA certificate",
+			"cert_path", caCertPath,
+			"key_path", caKeyPath,
+		)
+		log.Info(ctx, "Trust this CA in your browser/system to avoid certificate warnings",
+			"cert_path", caCertPath,
+		)
+	} else {
+		log.Info(ctx, "loaded existing CA certificate",
+			"cert_path", caCertPath,
+		)
+	}
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, slog.Default())
 
 	// Create service registry
 	registry := service.NewRegistry()
@@ -109,13 +122,29 @@ func runServer(cmd *cobra.Command, args []string) error {
 	// Load services from config
 	serviceCount := 0
 	headerStrategies := make(map[string]bool) // Track header strategies to register
+	credentialRefs := make([]string, 0)       // Collect credential refs for preloading
 	for name, svcCfg := range cfg.Services {
 		// Determine auth strategy reference
-		// For "header" strategy, use "header:<header_name>" format
+		// Support both documented formats:
+		// 1. Combined format (recommended): auth_strategy = "header:x-api-key"
+		// 2. Separate fields format: auth_strategy = "header", header_name = "x-api-key"
 		authStrategyRef := svcCfg.AuthStrategy
-		if svcCfg.AuthStrategy == "header" && svcCfg.HeaderName != "" {
+		headerName := svcCfg.HeaderName
+
+		if strings.HasPrefix(svcCfg.AuthStrategy, "header:") {
+			// Combined format: auth_strategy = "header:x-api-key"
+			headerName = svcCfg.AuthStrategy[7:] // Extract "x-api-key" from "header:x-api-key"
+			authStrategyRef = svcCfg.AuthStrategy
+			headerStrategies[headerName] = true
+		} else if svcCfg.AuthStrategy == "header" && svcCfg.HeaderName != "" {
+			// Separate fields format: auth_strategy = "header", header_name = "x-api-key"
 			authStrategyRef = "header:" + svcCfg.HeaderName
 			headerStrategies[svcCfg.HeaderName] = true
+		}
+
+		// Collect credential refs for preloading
+		if svcCfg.CredentialRef != "" {
+			credentialRefs = append(credentialRefs, svcCfg.CredentialRef)
 		}
 
 		// Convert config.ServiceConfig to service.Service
@@ -165,6 +194,16 @@ func runServer(cmd *cobra.Command, args []string) error {
 	secretRegistry.Register("file", secrets.NewFileProvider())
 	secretRegistry.Register("keychain", secrets.NewKeychainProvider())
 
+	// Preload secrets at startup to avoid expensive lookups during request handling
+	if len(credentialRefs) > 0 {
+		if err := secretRegistry.PreloadSecrets(ctx, credentialRefs...); err != nil {
+			return fmt.Errorf("failed to preload secrets at startup: %w", err)
+		}
+		log.Info(ctx, "preloaded secrets at startup",
+			"secret_count", len(credentialRefs),
+		)
+	}
+
 	// Register built-in auth strategies
 	authRegistry.Register("bearer", &auth.BearerStrategy{})
 
@@ -176,6 +215,13 @@ func runServer(cmd *cobra.Command, args []string) error {
 			"strategy", strategyKey,
 			"header_name", headerName,
 		)
+	}
+
+	// Validate all services have registered auth strategies and credentials
+	if serviceCount > 0 {
+		if err := validateConfiguration(ctx, registry, authRegistry, secretRegistry); err != nil {
+			return fmt.Errorf("configuration validation failed: %w", err)
+		}
 	}
 
 	// Create proxy server with MITM support
@@ -207,6 +253,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info(ctx, "proxy server started successfully")
+
 	log.Info(ctx, "waiting for shutdown signal (SIGTERM/SIGINT)")
 
 	// Wait for shutdown signal
@@ -257,16 +304,112 @@ func setupLogging(cfg *config.Config) {
 // getCAPath returns the CA directory and file paths.
 // Uses ~/.config/chaperone/ as the default location.
 func getCAPath() (dir, keyPath, certPath string, err error) {
-	// Get user config directory
-	configDir, err := os.UserConfigDir()
+	// Get user home directory
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", "", "", fmt.Errorf("failed to get user config directory: %w", err)
+		return "", "", "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
 
-	// Build CA paths
-	dir = filepath.Join(configDir, "chaperone")
+	// Build CA paths using ~/.config/chaperone
+	dir = filepath.Join(homeDir, ".config", "chaperone")
 	keyPath = filepath.Join(dir, "ca-key.pem")
 	certPath = filepath.Join(dir, "ca-cert.pem")
 
 	return dir, keyPath, certPath, nil
+}
+
+// validateConfiguration checks that all configured services have valid configuration:
+// - auth strategies exist
+// - secret providers exist (for credential references)
+// - host patterns are valid
+// - policy configuration is valid
+// This is called at startup to catch configuration errors early.
+func validateConfiguration(ctx context.Context, registry service.ServiceRegistry, authRegistry *auth.Registry, secretRegistry *secrets.Registry) error {
+	var validationErrors []string
+
+	for _, svc := range registry.ListAll() {
+		// Validate auth strategy
+		strategyRef := svc.AuthStrategyRef
+		if strategyRef == "" {
+			strategyRef = "bearer" // Default strategy
+		}
+
+		if !authRegistry.Has(strategyRef) {
+			err := fmt.Sprintf("auth strategy %q not registered (host pattern: %s)", strategyRef, svc.HostPattern)
+			validationErrors = append(validationErrors, err)
+			log.Error(ctx, "auth strategy not found",
+				fmt.Errorf(err),
+				"host_pattern", svc.HostPattern,
+			)
+		}
+
+		// Validate secret provider (if credential reference exists)
+		if svc.CredentialRef != "" {
+			provider := parseSecretProvider(svc.CredentialRef)
+			if provider == "" {
+				err := fmt.Sprintf("invalid credential_ref format %q (host pattern: %s)", svc.CredentialRef, svc.HostPattern)
+				validationErrors = append(validationErrors, err)
+				log.Error(ctx, "invalid credential reference format",
+					fmt.Errorf(err),
+					"credential_ref", svc.CredentialRef,
+					"host_pattern", svc.HostPattern,
+				)
+			} else if !secretRegistry.HasProvider(provider) {
+				err := fmt.Sprintf("secret provider %q not found for credential_ref %q (host pattern: %s)", provider, svc.CredentialRef, svc.HostPattern)
+				validationErrors = append(validationErrors, err)
+				log.Error(ctx, "secret provider not found",
+					fmt.Errorf(err),
+					"provider", provider,
+					"credential_ref", svc.CredentialRef,
+					"host_pattern", svc.HostPattern,
+				)
+			}
+		}
+
+		// Validate host pattern (basic check - should be non-empty)
+		if svc.HostPattern == "" {
+			err := "host pattern is empty"
+			validationErrors = append(validationErrors, err)
+			log.Error(ctx, "invalid service configuration",
+				fmt.Errorf(err),
+				"service", svc,
+			)
+		}
+
+		// Validate policy configuration
+		if svc.Policy != nil {
+			if svc.Policy.MaxBodyBytes < 0 {
+				err := fmt.Sprintf("max_body_bytes is negative (host pattern: %s)", svc.HostPattern)
+				validationErrors = append(validationErrors, err)
+				log.Error(ctx, "invalid policy configuration",
+					fmt.Errorf(err),
+					"host_pattern", svc.HostPattern,
+				)
+			}
+		}
+	}
+
+	if len(validationErrors) > 0 {
+		return fmt.Errorf("configuration validation failed: %d error(s): %v", len(validationErrors), validationErrors)
+	}
+
+	log.Info(ctx, "configuration validation passed")
+	return nil
+}
+
+// parseSecretProvider extracts the provider name from a secret reference.
+// Returns empty string if format is invalid.
+// Format: "provider:path"
+func parseSecretProvider(ref string) string {
+	idx := -1
+	for i, r := range ref {
+		if r == ':' {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return "" // Invalid format
+	}
+	return ref[:idx]
 }
