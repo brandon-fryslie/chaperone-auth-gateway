@@ -215,9 +215,9 @@ func (ca *CA) SignCertificate(template *x509.Certificate) (*tls.Certificate, err
 		return nil, fmt.Errorf("failed to sign certificate: %w", err)
 	}
 
-	// Create tls.Certificate
+	// Create tls.Certificate with complete chain: [leaf, root CA]
 	tlsCert := &tls.Certificate{
-		Certificate: [][]byte{certDER},
+		Certificate: [][]byte{certDER, ca.cert.Raw},
 		PrivateKey:  leafKey,
 	}
 

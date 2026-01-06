@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net"
 	"strings"
@@ -21,13 +22,15 @@ type CertCache struct {
 	generating sync.Map // map[string]chan struct{} - for coordinating concurrent generation
 	serialMu   sync.Mutex
 	serialNext int64
+	logger     *slog.Logger
 }
 
 // NewCertCache creates a new certificate cache.
-func NewCertCache(ca *CA) *CertCache {
+func NewCertCache(ca *CA, logger *slog.Logger) *CertCache {
 	return &CertCache{
 		ca:         ca,
 		serialNext: 1,
+		logger:     logger,
 	}
 }
 
@@ -44,6 +47,9 @@ func (c *CertCache) GetCertificate(hostname string) (*tls.Certificate, error) {
 
 	// Check cache
 	if cached, ok := c.cache.Load(host); ok {
+		if c.logger != nil {
+			c.logger.Debug("using cached certificate", "hostname", host)
+		}
 		return cached.(*tls.Certificate), nil
 	}
 
@@ -81,6 +87,9 @@ func (c *CertCache) GetCertificate(hostname string) (*tls.Certificate, error) {
 
 	// Store in cache
 	c.cache.Store(host, cert)
+	if c.logger != nil {
+		c.logger.Info("generated certificate with CA", "hostname", host)
+	}
 
 	return cert, nil
 }
@@ -127,9 +136,9 @@ func (c *CertCache) generateCertificate(hostname string) (*tls.Certificate, erro
 		return nil, fmt.Errorf("failed to sign certificate: %w", err)
 	}
 
-	// Create tls.Certificate
+	// Create tls.Certificate with complete chain: [leaf, root CA]
 	tlsCert := &tls.Certificate{
-		Certificate: [][]byte{certDER},
+		Certificate: [][]byte{certDER, c.ca.cert.Raw},
 		PrivateKey:  leafKey,
 	}
 

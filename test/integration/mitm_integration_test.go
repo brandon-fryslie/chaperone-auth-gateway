@@ -137,7 +137,7 @@ func TestSelectiveMITMWithTrustedCA(t *testing.T) {
 	}
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Start proxy server with MITM enabled
 	ctx := context.Background()
@@ -242,7 +242,7 @@ func TestTransparentTunnelForNonConfiguredDomains(t *testing.T) {
 	registry := service.NewRegistry()
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Start proxy with MITM enabled
 	ctx := context.Background()
@@ -355,7 +355,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		}
 
 		// Create certificate cache
-		certCache := mitm.NewCertCache(ca)
+		certCache := mitm.NewCertCache(ca, nil)
 
 		// Start proxy
 		ctx := context.Background()
@@ -453,7 +453,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		}
 
 		// Create certificate cache
-		certCache := mitm.NewCertCache(ca)
+		certCache := mitm.NewCertCache(ca, nil)
 
 		// Start proxy
 		ctx := context.Background()
@@ -550,7 +550,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		}
 
 		// Create certificate cache
-		certCache := mitm.NewCertCache(ca)
+		certCache := mitm.NewCertCache(ca, nil)
 
 		// Start proxy
 		ctx := context.Background()
@@ -663,7 +663,7 @@ func TestCertificateTrustValidation(t *testing.T) {
 		}
 
 		// Create certificate cache
-		certCache := mitm.NewCertCache(ca)
+		certCache := mitm.NewCertCache(ca, nil)
 
 		// Start proxy
 		ctx := context.Background()
@@ -751,7 +751,7 @@ func TestCertificateTrustValidation(t *testing.T) {
 		}
 
 		// Create certificate cache
-		certCache := mitm.NewCertCache(ca)
+		certCache := mitm.NewCertCache(ca, nil)
 
 		// Start proxy
 		ctx := context.Background()

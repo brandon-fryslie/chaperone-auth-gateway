@@ -25,7 +25,7 @@ func TestCertificateGenerationForHostname(t *testing.T) {
 	require.NoError(t, err, "CA generation should succeed")
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Generate certificate for hostname
 	hostname := "api.example.com"
@@ -68,7 +68,7 @@ func TestCertificateSignedByCA(t *testing.T) {
 	require.NoError(t, err, "CA generation should succeed")
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Generate certificate
 	hostname := "test.example.com"
@@ -107,7 +107,7 @@ func TestCertificateCaching(t *testing.T) {
 	require.NoError(t, err, "CA generation should succeed")
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Generate certificate for hostname
 	hostname := "cache-test.example.com"
@@ -153,7 +153,7 @@ func TestCertificateExpirationHandling(t *testing.T) {
 	require.NoError(t, err, "CA generation should succeed")
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Generate certificate
 	hostname := "expiry-test.example.com"
@@ -212,7 +212,7 @@ func TestCertificateSANCorrectness(t *testing.T) {
 			require.NoError(t, err, "CA generation should succeed")
 
 			// Create certificate cache
-			certCache := mitm.NewCertCache(ca)
+			certCache := mitm.NewCertCache(ca, nil)
 
 			// Generate certificate
 			tlsCert, err := certCache.GetCertificate(tc.hostname)
@@ -241,7 +241,7 @@ func TestCertificatePortStripping(t *testing.T) {
 	require.NoError(t, err, "CA generation should succeed")
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Generate certificate with port
 	hostnameWithPort := "api.example.com:443"
@@ -278,7 +278,7 @@ func TestCertificateCaseInsensitiveHostname(t *testing.T) {
 	require.NoError(t, err, "CA generation should succeed")
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Generate certificate with lowercase hostname
 	tlsCert1, err := certCache.GetCertificate("api.example.com")
@@ -313,7 +313,7 @@ func TestCertificateConcurrentAccess(t *testing.T) {
 	require.NoError(t, err, "CA generation should succeed")
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Concurrently request certificates
 	numRequests := 100
@@ -366,7 +366,7 @@ func TestCertificateValidityDates(t *testing.T) {
 	require.NoError(t, err, "CA generation should succeed")
 
 	// Create certificate cache
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 
 	// Generate certificate
 	tlsCert, err := certCache.GetCertificate("validity-test.example.com")

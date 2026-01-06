@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"strings"
 
+	apierrors "github.com/bmf/chaperone/internal/errors"
 	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/client"
-	"github.com/bmf/chaperone/internal/errors"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/secrets"
 	"github.com/bmf/chaperone/internal/service"
@@ -104,7 +104,7 @@ func (h *MITMHandler) ProxyRequest(ctx context.Context, clientConn *tls.Conn, ho
 
 			// Determine status code based on error type
 			statusCode := http.StatusForbidden
-			if policyErr, ok := err.(*errors.PolicyError); ok {
+			if policyErr, ok := err.(*apierrors.PolicyError); ok {
 				if strings.Contains(policyErr.Error(), "too large") {
 					statusCode = http.StatusRequestEntityTooLarge
 				}
@@ -188,7 +188,6 @@ func (h *MITMHandler) forwardRequest(ctx context.Context, clientConn net.Conn, r
 			h.sendErrorResponse(clientConn, http.StatusServiceUnavailable, "Secret unavailable")
 			return fmt.Errorf("secret fetch failed: %w", err)
 		}
-		log.Debug(ctx, "fetched secret for authentication", "service", svc.HostPattern)
 
 		// Get authentication strategy
 		strategy, err := h.authRegistry.Get(svc.AuthStrategyRef)
@@ -208,10 +207,6 @@ func (h *MITMHandler) forwardRequest(ctx context.Context, clientConn net.Conn, r
 			h.sendErrorResponse(clientConn, http.StatusBadGateway, "Authentication failed")
 			return fmt.Errorf("authentication application failed: %w", err)
 		}
-
-		log.Info(ctx, "applied authentication to upstream request",
-			"service", svc.HostPattern,
-			"strategy", svc.AuthStrategyRef)
 	}
 
 	// Make request to upstream
@@ -221,7 +216,8 @@ func (h *MITMHandler) forwardRequest(ctx context.Context, clientConn net.Conn, r
 	}
 	defer resp.Body.Close() //nolint:errcheck // Best effort cleanup
 
-	// Write response to client
+	// Write response to client using standard HTTP response writing
+	// This ensures proper handling of headers, chunked encoding, and other HTTP details
 	if err := resp.Write(clientConn); err != nil {
 		return fmt.Errorf("failed to write response to client: %w", err)
 	}

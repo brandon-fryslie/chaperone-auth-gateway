@@ -148,7 +148,7 @@ func TestBearerTokenAuthenticationEndToEnd(t *testing.T) {
 	}
 
 	// Setup: Start proxy server with MITM and authentication
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 	ctx := context.Background()
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
@@ -302,7 +302,7 @@ func TestCustomHeaderAuthenticationEndToEnd(t *testing.T) {
 	}
 
 	// Setup: Start proxy server
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 	ctx := context.Background()
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
@@ -441,7 +441,7 @@ func TestSecretFetchFailureReturns503(t *testing.T) {
 	}
 
 	// Setup: Start proxy server
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 	ctx := context.Background()
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
@@ -570,7 +570,7 @@ func TestUnknownStrategyReturns502(t *testing.T) {
 	}
 
 	// Setup: Start proxy server
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 	ctx := context.Background()
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
@@ -713,7 +713,7 @@ func TestConcurrentAuthenticatedRequests(t *testing.T) {
 	}
 
 	// Setup: Start proxy server
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 	ctx := context.Background()
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
@@ -880,7 +880,7 @@ func TestAuthStrategyPreservesClientHeaders(t *testing.T) {
 	}
 
 	// Setup: Start proxy server
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 	ctx := context.Background()
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
@@ -1037,7 +1037,7 @@ func TestStrategyRegistryLookup(t *testing.T) {
 		}
 
 		// Setup: Start proxy server
-		certCache := mitm.NewCertCache(ca)
+		certCache := mitm.NewCertCache(ca, nil)
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
@@ -1157,7 +1157,7 @@ func TestStrategyRegistryLookup(t *testing.T) {
 		}
 
 		// Setup: Start proxy server
-		certCache := mitm.NewCertCache(ca)
+		certCache := mitm.NewCertCache(ca, nil)
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
@@ -1296,7 +1296,7 @@ func TestAuthPreservesRequestBody(t *testing.T) {
 	}
 
 	// Setup: Start proxy server
-	certCache := mitm.NewCertCache(ca)
+	certCache := mitm.NewCertCache(ca, nil)
 	ctx := context.Background()
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
