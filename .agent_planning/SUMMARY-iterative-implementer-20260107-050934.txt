@@ -1,0 +1,131 @@
+Agent: iterative-implementer | 20260107-050934
+Mode: manual (no tests exist for init wizard yet)
+Status: in_progress
+
+## Completed Work
+
+### P0: Detection Infrastructure (COMPLETE)
+Files Created:
+- internal/init/types.go (Finding, ServiceFindings, PolicyFindings, DetectorConfig, GeneratedService)
+- internal/init/evidence.go (Thread-safe evidence accumulation)
+- internal/init/heuristics.go (4-level confidence scoring)
+- internal/init/detector.go (Request analyzer)
+- internal/init/policy_detector.go (Policy detection, path generalization)
+- internal/init/heuristics_test.go (Comprehensive heuristic tests)
+- internal/init/policy_detector_test.go (Path/policy tests)
+
+Commits:
+- b7e8053 feat(init): add P0 detection infrastructure for credential discovery
+
+Tests: All passing (13 test functions, 34 test cases)
+- Sentinel matching (100% confidence)
+- Known auth headers (90% confidence)
+- Auth keywords (70% confidence)
+- Value patterns (60% confidence)
+- Path generalization (numeric IDs, UUIDs, separators, long alphanumeric)
+- Policy inference (max body bytes, formatting)
+
+### P1: Credential Storage & Config Generator (COMPLETE)
+Files Created:
+- internal/init/generator.go (TOML generation, auth strategy inference)
+- internal/init/credential_writer.go (Keychain/file/.env writers)
+- internal/init/generator_test.go (TOML generation tests)
+- internal/init/credential_writer_test.go (Storage tests)
+
+Commits:
+- 807cbb2 feat(init): add P1 credential storage & config generator
+
+Tests: All passing (6 test functions, 17 test cases)
+- Auth strategy inference (Authorization -> bearer, others -> header:X-Name)
+- TOML generation and parsing validation
+- Three storage methods: keychain (macOS), file (0600 perms), .env
+- Proper credential_ref format for each storage type
+
+## Remaining Work
+
+### P2: Interactive Wizard (TODO)
+Files to Create:
+- internal/init/wizard.go (5-step flow controller)
+- cmd/chaperone/cmd/init.go (CLI entry point)
+
+Features Needed:
+1. Step 1: Configure proxy (name, address, port, sentinel)
+2. Step 2: Detection mode (start proxy, real-time feedback, Ctrl+C handling)
+3. Step 3: Review findings (show auth + policy, confirm/adjust)
+4. Step 4: Credential storage (secure prompt, choose storage, write credential)
+5. Step 5: Generate & save (TOML generation, append mode, show next steps)
+
+CLI Flags:
+- --sentinel <value>
+- --service-name <name>
+- --yes (non-interactive)
+- --dry-run
+
+### P3: Proxy Integration (TODO)
+Files to Modify:
+- internal/proxy/server.go (add NewInitProxy factory)
+
+Features Needed:
+- Follow NewExamineProxy pattern (lines 179-230)
+- MITM all connections
+- Request handler calls detector.AnalyzeRequest(r)
+- Passthrough behavior (no modification)
+
+Integration Test:
+- Verify proxy detects auth headers
+- Verify requests forwarded unmodified
+
+## Cache Invalidation
+
+No cache invalidation needed yet - no existing files were modified, only new files created in internal/init/.
+
+## Validation Performed
+
+All tests passing:
+```
+go test ./internal/init/... -v
+PASS
+ok  	github.com/bmf/chaperone/internal/init	0.364s
+```
+
+Build verification:
+```
+go build ./cmd/chaperone
+SUCCESS
+```
+
+## Next Steps
+
+To complete the init wizard implementation:
+
+1. **P2: Interactive Wizard**
+   - Create wizard.go with 5-step flow
+   - Implement secure credential prompting (terminal.ReadPassword)
+   - Add real-time detection feedback
+   - Handle Ctrl+C gracefully
+   - Create cmd/chaperone/cmd/init.go CLI command
+   - Test interactively
+
+2. **P3: Proxy Integration**
+   - Add NewInitProxy() to internal/proxy/server.go
+   - Follow NewExamineProxy pattern
+   - Wire detector to proxy request handler
+   - Create integration test
+   - Test end-to-end detection
+
+3. **Final Validation**
+   - Manual test: `chaperone init` with real API request
+   - Verify generated config works with `chaperone inject`
+   - Test all three credential storage methods
+   - Verify sentinel detection works
+
+## References
+
+Plan File: ~/.claude/plans/quirky-popping-rocket.md
+
+Key Patterns:
+- NewExamineProxy: internal/proxy/server.go:179-230
+- CLI command: cmd/chaperone/cmd/examine.go
+- Known auth headers: internal/proxy/handlers.go:136-149
+- Config structure: internal/config/config.go
+- Keychain patterns: internal/secrets/keychain.go
