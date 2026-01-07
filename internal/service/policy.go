@@ -7,6 +7,8 @@ type Policy struct {
 	AllowedPaths   []string
 	MaxBodyBytes   int64
 	ClientGroups   []string
+	Drop           []string // URL patterns to block (drops traffic)
+	Strip          []string // Headers to strip from requests
 }
 
 // PolicyEnforcer validates requests against service policies.

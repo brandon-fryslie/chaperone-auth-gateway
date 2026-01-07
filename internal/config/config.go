@@ -30,6 +30,8 @@ type ServiceConfig struct {
 	AllowedPaths   []string `toml:"allowed_paths"`
 	MaxBodyBytes   int64    `toml:"max_body_bytes"`
 	ClientGroups   []string `toml:"client_groups"`
+	Drop           []string `toml:"drop"`  // URL patterns to block (drops traffic)
+	Strip          []string `toml:"strip"` // Headers to strip from requests
 }
 
 // LoggingConfig contains logging settings.
