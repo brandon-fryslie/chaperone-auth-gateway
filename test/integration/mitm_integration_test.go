@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bmf/chaperone/internal/client"
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/proxy"
@@ -144,7 +143,7 @@ func TestSelectiveMITMWithTrustedCA(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 
-	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamClient: newTestUpstreamClient(t)})
+	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
 	err = proxyServer.Start(ctx)
 	require.NoError(t, err, "Proxy server should start")
 	defer proxyServer.Stop(ctx)
@@ -249,7 +248,7 @@ func TestTransparentTunnelForNonConfiguredDomains(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 
-	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamClient: newTestUpstreamClient(t)})
+	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
 	err = proxyServer.Start(ctx)
 	require.NoError(t, err, "Proxy server should start")
 	defer proxyServer.Stop(ctx)
@@ -361,7 +360,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamClient: newTestUpstreamClient(t)})
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
 		err = proxyServer.Start(ctx)
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -459,7 +458,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamClient: newTestUpstreamClient(t)})
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
 		err = proxyServer.Start(ctx)
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -556,7 +555,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamClient: newTestUpstreamClient(t)})
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
 		err = proxyServer.Start(ctx)
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -669,7 +668,7 @@ func TestCertificateTrustValidation(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamClient: newTestUpstreamClient(t)})
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
 		err = proxyServer.Start(ctx)
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -757,7 +756,7 @@ func TestCertificateTrustValidation(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamClient: newTestUpstreamClient(t)})
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
 		err = proxyServer.Start(ctx)
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -797,23 +796,3 @@ func findAvailablePort(t *testing.T) int {
 	return port
 }
 
-// newTestUpstreamClient creates an HTTP client for testing that accepts self-signed certificates.
-// This is ONLY safe for localhost testing and should NEVER be used in production.
-func newTestUpstreamClient(t *testing.T) *client.Client {
-	t.Helper()
-
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true, // Accept self-signed certs for localhost testing
-		MinVersion:         tls.VersionTLS12,
-	}
-
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig:       tlsConfig,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 60 * time.Second,
-		},
-	}
-
-	return client.NewClientWithHTTPClient(httpClient, slog.Default())
-}

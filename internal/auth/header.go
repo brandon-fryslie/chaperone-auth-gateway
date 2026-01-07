@@ -18,6 +18,8 @@ type HeaderStrategy struct {
 
 // Apply injects custom header authentication into the request.
 // The request is modified in-place to include the configured header.
+// If a header with the same name (case-insensitive) already exists with different capitalization,
+// it will be replaced using the existing capitalization and a warning will be logged.
 func (s *HeaderStrategy) Apply(ctx context.Context, req *http.Request, secret string) error {
 	if secret == "" {
 		return errors.ErrSecretNotFound
@@ -28,11 +30,15 @@ func (s *HeaderStrategy) Apply(ctx context.Context, req *http.Request, secret st
 	}
 
 	// Set custom header with secret value
-	// Use Set() to replace any existing header
-	req.Header.Set(s.HeaderName, secret)
+	// This preserves existing capitalization if present (e.g., "x-api-key" vs "X-API-Key")
+	replaced := setHeaderPreservingCapitalization(ctx, req, s.HeaderName, secret)
 
 	// Log injection without revealing the secret
-	slog.DebugContext(ctx, "injected custom header authentication", "header", s.HeaderName)
+	if replaced {
+		slog.DebugContext(ctx, "injected custom header authentication (replaced existing header)", "header", s.HeaderName)
+	} else {
+		slog.DebugContext(ctx, "injected custom header authentication", "header", s.HeaderName)
+	}
 
 	return nil
 }

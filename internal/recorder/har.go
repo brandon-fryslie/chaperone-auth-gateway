@@ -22,71 +22,71 @@ type HAREntry struct {
 
 // HARRequest represents an HTTP request in HAR format
 type HARRequest struct {
- Method      string              `json:"method"`
- URL         string              `json:"url"`
- HTTPVersion string              `json:"httpVersion"`
- Cookies     []HARCookie         `json:"cookies"`
- Headers     []HARHeader         `json:"headers"`
- QueryString []HARQueryString    `json:"queryString"`
- PostData    *HARPostData        `json:"postData,omitempty"`
- HeadersSize int                `json:"headersSize"`
- BodySize    int                `json:"bodySize"`
+	Method      string              `json:"method"`
+	URL         string              `json:"url"`
+	HTTPVersion string              `json:"httpVersion"`
+	Cookies     []HARCookie         `json:"cookies"`
+	Headers     []HARHeader         `json:"headers"`
+	QueryString []HARQueryString    `json:"queryString"`
+	PostData    *HARPostData        `json:"postData,omitempty"`
+	HeadersSize int                `json:"headersSize"`
+	BodySize    int                `json:"bodySize"`
 }
 
 // HARResponse represents an HTTP response in HAR format
 type HARResponse struct {
- Status      int         `json:"status"`
- StatusText  string      `json:"statusText"`
- HTTPVersion string      `json:"httpVersion"`
- Cookies     []HARCookie `json:"cookies"`
- Headers     []HARHeader `json:"headers"`
- Content     HARContent  `json:"content"`
- RedirectURL string      `json:"redirectURL"`
- HeadersSize int         `json:"headersSize"`
- BodySize    int         `json:"bodySize"`
+	Status      int         `json:"status"`
+	StatusText  string      `json:"statusText"`
+	HTTPVersion string      `json:"httpVersion"`
+	Cookies     []HARCookie `json:"cookies"`
+	Headers     []HARHeader `json:"headers"`
+	Content     HARContent  `json:"content"`
+	RedirectURL string      `json:"redirectURL"`
+	HeadersSize int         `json:"headersSize"`
+	BodySize    int         `json:"bodySize"`
 }
 
 // HARContent represents response content in HAR format
 type HARContent struct {
- Size        int    `json:"size"`
- MIMEType    string `json:"mimeType"`
- Text        string `json:"text,omitempty"`
- Encoding    string `json:"encoding,omitempty"`
- Comment     string `json:"comment,omitempty"`
+	Size        int    `json:"size"`
+	MIMEType    string `json:"mimeType"`
+	Text        string `json:"text,omitempty"`
+	Encoding    string `json:"encoding,omitempty"`
+	Comment     string `json:"comment,omitempty"`
 }
 
 // HARHeader represents an HTTP header in HAR format
 type HARHeader struct {
- Name     string `json:"name"`
- Value    string `json:"value"`
- Comment  string `json:"comment,omitempty"`
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	Comment  string `json:"comment,omitempty"`
 }
 
 // HARCookie represents an HTTP cookie in HAR format
 type HARCookie struct {
- Name     string `json:"name"`
- Value    string `json:"value"`
- Path     string `json:"path,omitempty"`
- Domain   string `json:"domain,omitempty"`
- Expires  string `json:"expires,omitempty"`
- HTTPOnly bool   `json:"httpOnly,omitempty"`
- Secure   bool   `json:"secure,omitempty"`
- Comment  string `json:"comment,omitempty"`
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	Path     string `json:"path,omitempty"`
+	Domain   string `json:"domain,omitempty"`
+	Expires  string `json:"expires,omitempty"`
+	HTTPOnly bool   `json:"httpOnly,omitempty"`
+	Secure   bool   `json:"secure,omitempty"`
+	Comment  string `json:"comment,omitempty"`
 }
 
 // HARQueryString represents a query string parameter in HAR format
 type HARQueryString struct {
- Name    string `json:"name"`
- Value   string `json:"value"`
- Comment string `json:"comment,omitempty"`
+	Name    string `json:"name"`
+	Value   string `json:"value"`
+	Comment string `json:"comment,omitempty"`
 }
 
 // HARPostData represents POST data in HAR format
 type HARPostData struct {
- MIMEType string              `json:"mimeType"`
- Text     string              `json:"text"`
- Params   []HARPostDataParam `json:"params,omitempty"`
- Comment  string             `json:"comment,omitempty"`
+	MIMEType string              `json:"mimeType"`
+	Text     string              `json:"text"`
+	Params   []HARPostDataParam  `json:"params,omitempty"`
+	Comment  string              `json:"comment,omitempty"`
 }
 
 // HARPostDataParam represents a POST data parameter in HAR format
@@ -140,11 +140,11 @@ type HARBrowser struct {
 
 // HARPage represents a page in the HAR file
 type HARPage struct {
-	StartedDateTime string      `json:"startedDateTime"`
-	ID             string      `json:"id"`
-	Title          string      `json:"title"`
-	PageTimings    HARPageTimings `json:"pageTimings"`
-	Comment        string      `json:"comment,omitempty"`
+	StartedDateTime string         `json:"startedDateTime"`
+	ID              string         `json:"id"`
+	Title           string         `json:"title"`
+	PageTimings     HARPageTimings `json:"pageTimings"`
+	Comment         string         `json:"comment,omitempty"`
 }
 
 // HARPageTimings represents page timing information
@@ -251,14 +251,10 @@ func (r *Recorder) RecordRequest(req *http.Request, started time.Time) func(resp
 				}
 			}
 
-			// Try to read response body if small enough
-			if resp.ContentLength > 0 && resp.ContentLength < r.maxBody {
-				var buf bytes.Buffer
-				if _, err := buf.ReadFrom(resp.Body); err == nil {
-					bodyText := buf.String()
-					entry.Response.Content.Size = len(bodyText)
-					entry.Response.Content.Text = bodyText
-				}
+			// Do not try to read response body as it is streamed to client
+			// Just record the size from Content-Length header
+			if resp.ContentLength > 0 {
+				entry.Response.Content.Size = int(resp.ContentLength)
 			}
 		}
 

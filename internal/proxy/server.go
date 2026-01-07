@@ -10,13 +10,15 @@ import (
 	"time"
 
 	"github.com/bmf/chaperone/internal/auth"
-	"github.com/bmf/chaperone/internal/client"
 	"github.com/bmf/chaperone/internal/config"
+	"github.com/bmf/chaperone/internal/examine"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
+	"github.com/bmf/chaperone/internal/recorder"
 	"github.com/bmf/chaperone/internal/secrets"
 	"github.com/bmf/chaperone/internal/service"
 	"github.com/bmf/chaperone/internal/shutdown"
+	"github.com/elazarl/goproxy"
 )
 
 // Server is an HTTP proxy server that handles CONNECT tunnels.
@@ -24,8 +26,10 @@ type Server struct {
 	config      *config.Config
 	logger      *slog.Logger
 	shutdownMgr *shutdown.Manager
+	proxy       *goproxy.ProxyHttpServer
 	httpServer  *http.Server
 	listener    net.Listener
+	recorder    *recorder.Recorder
 	mu          sync.Mutex
 	started     bool
 }
@@ -43,14 +47,18 @@ func New(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager)
 		shutdownMgr: shutdownMgr,
 	}
 
-	// Create the tunnel handler (transparent mode only)
-	tunnelHandler := &TunnelHandler{
-		logger: logger,
-	}
+	// Create goproxy server
+	proxy := goproxy.NewProxyHttpServer()
+	proxy.Verbose = (cfg.Logging.Level == "debug")
 
-	// Create HTTP server with the tunnel handler
+	// Disable proxy for upstream connections to avoid proxy loops
+	proxy.Tr.Proxy = nil
+
+	s.proxy = proxy
+
+	// Create HTTP server with the proxy
 	s.httpServer = &http.Server{
-		Handler:           tunnelHandler,
+		Handler:           proxy,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       1 * time.Second,
@@ -67,11 +75,6 @@ func New(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager)
 
 // MITMOptions allows configuring optional parameters for MITM mode.
 type MITMOptions struct {
-	// UpstreamClient optionally overrides the default upstream HTTP client.
-	// If nil, a default client with system trust store is used.
-	// This is primarily useful for testing.
-	UpstreamClient *client.Client
-
 	// SecretRegistry provides secret fetching capabilities.
 	// If nil, authentication will be skipped (backward compatibility).
 	SecretRegistry *secrets.Registry
@@ -94,20 +97,13 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		config:      cfg,
 		logger:      logger,
 		shutdownMgr: shutdownMgr,
+		recorder:    recorder.NewRecorder(),
 	}
 
 	// Get options (if provided)
 	var options *MITMOptions
 	if len(opts) > 0 && opts[0] != nil {
 		options = opts[0]
-	}
-
-	// Create upstream client (use provided or create default)
-	var upstreamClient *client.Client
-	if options != nil && options.UpstreamClient != nil {
-		upstreamClient = options.UpstreamClient
-	} else {
-		upstreamClient = client.NewClient(logger)
 	}
 
 	// Get secret registry (if provided)
@@ -125,20 +121,100 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	// Create policy enforcer
 	enforcer := service.NewPolicyEnforcer(logger)
 
-	// Create MITM handler with registries
-	mitmHandler := NewMITMHandler(upstreamClient, logger, registry, enforcer, secretRegistry, authRegistry)
+	// Create goproxy server
+	proxy := goproxy.NewProxyHttpServer()
+	proxy.Verbose = (cfg.Logging.Level == "debug")
 
-	// Create the tunnel handler with MITM support
-	tunnelHandler := &TunnelHandler{
-		logger:      logger,
-		registry:    registry,
-		certCache:   certCache,
-		mitmHandler: mitmHandler,
+	// Disable proxy for upstream connections to avoid proxy loops
+	proxy.Tr.Proxy = nil
+
+	// Create certificate store adapter
+	certStore := NewGoproxyCertStore(certCache)
+
+	// Configure CONNECT handler (MITM vs transparent tunnel decision)
+	proxy.OnRequest().HandleConnectFunc(connectHandler(registry, certStore, logger))
+
+	// Configure request handlers in order:
+	// 1. Drop handler (block requests matching drop patterns)
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(dropHandler(registry, logger))
+
+	// 2. SECURITY: Auto-strip ALL known auth headers (prevents credential leakage)
+	// This is NOT configurable - it's a security measure that always runs
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(securityStripAuthHandler(registry, logger))
+
+	// 3. Policy enforcement (check methods, paths, body size)
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(policyHandler(registry, enforcer, logger))
+
+	// 4. User-configurable strip handler (remove additional headers)
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(stripHandler(registry, logger))
+
+	// 5. Authentication injection
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(authHandler(registry, secretRegistry, authRegistry, logger))
+
+	// 6. HAR recording - request start
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(recordRequestHandler(s.recorder))
+
+	// Configure response handler for HAR recording
+	proxy.OnResponse(ChaperoneRespCondition(registry)).DoFunc(recordResponseHandler(s.recorder))
+
+	s.proxy = proxy
+
+	// Create HTTP server with the proxy
+	s.httpServer = &http.Server{
+		Handler:           proxy,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       1 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	// Create HTTP server with the tunnel handler
+	// Register shutdown function
+	if shutdownMgr != nil {
+		shutdownMgr.Register(s.Stop)
+	}
+
+	return s
+}
+
+// NewExamineProxy creates a passthrough MITM proxy for examining requests.
+// It does NOT inject credentials or alter requests/responses.
+// This mode is used by 'chaperone examine' to help users discover how authentication
+// credentials are passed in requests.
+func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger) *Server {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	s := &Server{
+		config:      cfg,
+		logger:      logger,
+		shutdownMgr: shutdownMgr,
+	}
+
+	// Create goproxy server
+	proxy := goproxy.NewProxyHttpServer()
+	proxy.Verbose = (cfg.Logging.Level == "debug")
+
+	// Disable proxy for upstream connections to avoid proxy loops
+	proxy.Tr.Proxy = nil
+
+	// Create certificate store adapter
+	certStore := NewGoproxyCertStore(certCache)
+
+	// CONNECT handler: MITM ALL connections (passthrough but intercepted)
+	proxy.OnRequest().HandleConnectFunc(examineConnectHandler(certStore, logger))
+
+	// Request handler: Just log, don't modify
+	proxy.OnRequest().DoFunc(examineRequestHandler(examineLogger))
+
+	// Response handler: Log responses if configured
+	proxy.OnResponse().DoFunc(examineResponseHandler(examineLogger))
+
+	s.proxy = proxy
+
+	// Create HTTP server with the proxy
 	s.httpServer = &http.Server{
-		Handler:           tunnelHandler,
+		Handler:           proxy,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       1 * time.Second,
@@ -224,4 +300,12 @@ func (s *Server) Stop(ctx context.Context) error {
 	log.Info(ctx, "proxy server stopped")
 
 	return nil
+}
+
+// GetHAR returns the recorded HAR data as JSON bytes
+func (s *Server) GetHAR() ([]byte, error) {
+	if s.recorder == nil {
+		return nil, fmt.Errorf("recorder not initialized")
+	}
+	return s.recorder.ToJSON()
 }

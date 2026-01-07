@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,38 +19,37 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	configPath string
-	version    = "dev" // Set during build
-)
-
-// runCmd represents the run command
+// runCmd represents the run command (kept for backward compatibility)
 var runCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Start the chaperone proxy server",
+	Short: "Start the chaperone proxy server (deprecated, use 'inject' instead)",
 	Long: `Start the chaperone proxy server with the specified configuration.
 
 The proxy will listen on the configured address and port, and forward requests
 to upstream services with injected authentication credentials.
 
+Note: This command is deprecated. Use 'chaperone inject' instead.
+
 Example:
-  chaperone run --config chaperone.toml`,
+  chaperone run`,
 	RunE: runServer,
+	Deprecated: "use 'chaperone inject' instead",
 }
 
 func init() {
 	rootCmd.AddCommand(runCmd)
-
-	// Add config flag
-	runCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to configuration file (required)")
-	_ = runCmd.MarkFlagRequired("config") //nolint:errcheck // Cobra handles missing required flag at runtime
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
 	// Create context for the application
 	ctx := context.Background()
 
-	// Load configuration
+	// Load configuration using shared getConfigPath()
+	configPath, err := getConfigPath()
+	if err != nil {
+		return fmt.Errorf("failed to resolve config path: %w", err)
+	}
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -158,6 +156,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 				AllowedPaths:   svcCfg.AllowedPaths,
 				MaxBodyBytes:   svcCfg.MaxBodyBytes,
 				ClientGroups:   svcCfg.ClientGroups,
+				Drop:           svcCfg.Drop,
+				Strip:          svcCfg.Strip,
 			},
 		}
 
@@ -272,144 +272,4 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	log.Info(ctx, "chaperone stopped")
 	return nil
-}
-
-// setupLogging configures the global logger based on configuration
-func setupLogging(cfg *config.Config) {
-	var level slog.Level
-	switch cfg.Logging.Level {
-	case "debug":
-		level = slog.LevelDebug
-	case "info":
-		level = slog.LevelInfo
-	case "warn":
-		level = slog.LevelWarn
-	case "error":
-		level = slog.LevelError
-	default:
-		level = slog.LevelInfo
-	}
-
-	// Create handler with configured level
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: level,
-	})
-
-	// Create and set logger
-	logger := slog.New(handler)
-	log.SetLogger(logger)
-	log.SetLevel(level)
-}
-
-// getCAPath returns the CA directory and file paths.
-// Uses ~/.config/chaperone/ as the default location.
-func getCAPath() (dir, keyPath, certPath string, err error) {
-	// Get user home directory
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to get user home directory: %w", err)
-	}
-
-	// Build CA paths using ~/.config/chaperone
-	dir = filepath.Join(homeDir, ".config", "chaperone")
-	keyPath = filepath.Join(dir, "ca-key.pem")
-	certPath = filepath.Join(dir, "ca-cert.pem")
-
-	return dir, keyPath, certPath, nil
-}
-
-// validateConfiguration checks that all configured services have valid configuration:
-// - auth strategies exist
-// - secret providers exist (for credential references)
-// - host patterns are valid
-// - policy configuration is valid
-// This is called at startup to catch configuration errors early.
-func validateConfiguration(ctx context.Context, registry service.ServiceRegistry, authRegistry *auth.Registry, secretRegistry *secrets.Registry) error {
-	var validationErrors []string
-
-	for _, svc := range registry.ListAll() {
-		// Validate auth strategy
-		strategyRef := svc.AuthStrategyRef
-		if strategyRef == "" {
-			strategyRef = "bearer" // Default strategy
-		}
-
-		if !authRegistry.Has(strategyRef) {
-			err := fmt.Sprintf("auth strategy %q not registered (host pattern: %s)", strategyRef, svc.HostPattern)
-			validationErrors = append(validationErrors, err)
-			log.Error(ctx, "auth strategy not found",
-				fmt.Errorf(err),
-				"host_pattern", svc.HostPattern,
-			)
-		}
-
-		// Validate secret provider (if credential reference exists)
-		if svc.CredentialRef != "" {
-			provider := parseSecretProvider(svc.CredentialRef)
-			if provider == "" {
-				err := fmt.Sprintf("invalid credential_ref format %q (host pattern: %s)", svc.CredentialRef, svc.HostPattern)
-				validationErrors = append(validationErrors, err)
-				log.Error(ctx, "invalid credential reference format",
-					fmt.Errorf(err),
-					"credential_ref", svc.CredentialRef,
-					"host_pattern", svc.HostPattern,
-				)
-			} else if !secretRegistry.HasProvider(provider) {
-				err := fmt.Sprintf("secret provider %q not found for credential_ref %q (host pattern: %s)", provider, svc.CredentialRef, svc.HostPattern)
-				validationErrors = append(validationErrors, err)
-				log.Error(ctx, "secret provider not found",
-					fmt.Errorf(err),
-					"provider", provider,
-					"credential_ref", svc.CredentialRef,
-					"host_pattern", svc.HostPattern,
-				)
-			}
-		}
-
-		// Validate host pattern (basic check - should be non-empty)
-		if svc.HostPattern == "" {
-			err := "host pattern is empty"
-			validationErrors = append(validationErrors, err)
-			log.Error(ctx, "invalid service configuration",
-				fmt.Errorf(err),
-				"service", svc,
-			)
-		}
-
-		// Validate policy configuration
-		if svc.Policy != nil {
-			if svc.Policy.MaxBodyBytes < 0 {
-				err := fmt.Sprintf("max_body_bytes is negative (host pattern: %s)", svc.HostPattern)
-				validationErrors = append(validationErrors, err)
-				log.Error(ctx, "invalid policy configuration",
-					fmt.Errorf(err),
-					"host_pattern", svc.HostPattern,
-				)
-			}
-		}
-	}
-
-	if len(validationErrors) > 0 {
-		return fmt.Errorf("configuration validation failed: %d error(s): %v", len(validationErrors), validationErrors)
-	}
-
-	log.Info(ctx, "configuration validation passed")
-	return nil
-}
-
-// parseSecretProvider extracts the provider name from a secret reference.
-// Returns empty string if format is invalid.
-// Format: "provider:path"
-func parseSecretProvider(ref string) string {
-	idx := -1
-	for i, r := range ref {
-		if r == ':' {
-			idx = i
-			break
-		}
-	}
-	if idx == -1 {
-		return "" // Invalid format
-	}
-	return ref[:idx]
 }
