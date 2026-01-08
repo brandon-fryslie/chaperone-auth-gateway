@@ -1,0 +1,38 @@
+Agent: iterative-implementer | 20260107_143641
+Mode: manual
+Completed: P0 introduction, P1 contextual help | Files: 2 | Commits: 1
+Tests: N/A (manual validation mode)
+Cache invalidated: None (no eval-cache exists)
+Status: complete
+
+== Implementation Summary ==
+
+P0: Introduction Screen
+- Added PrintIntroduction() method to internal/init/wizard.go
+- Called from cmd/chaperone/cmd/init.go before Step 1
+- Introduction explains Chaperone's purpose (proxy, credential injection, no direct API key access)
+- Bullet points outline wizard steps (detect, configure, store, generate config)
+- Text is concise (~6 lines for intro, 4 bullet points for overview)
+
+P1: Contextual Help
+- Added help text before each prompt in Step1ConfigureProxy:
+  * Listen address: "The IP address where the proxy server will listen."
+  * Listen port: "The port number for proxy connections."
+  * Sentinel value: "An exact string to search for in requests (100% confidence detection)."
+- Added help text in Step4ConfigureService:
+  * Service name: "A short identifier for this service in your config."
+  * API key: "The actual API key or token that Chaperone will inject into requests."
+  * Storage options expanded:
+    - Keychain: "Most secure, uses macOS secure storage (recommended)"
+    - File: "Stored with restricted permissions (~/.config/chaperone/secrets/)"
+    - .env: "Environment file in current directory"
+- All help text lines are under 80 characters
+
+Validation:
+- go build ./... succeeds
+- All acceptance criteria from DOD met
+- Commit: 2d1c204 "feat(init): add introduction and contextual help to wizard"
+
+Next Steps:
+- User can test with: chaperone init --dry-run (requires running binary)
+- UX improvements complete per DoD

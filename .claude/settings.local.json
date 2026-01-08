@@ -1,10 +1,11 @@
 {
-  "enabledMcpjsonServers": [
-    "bigcodegen/mcp-neovim-server"
-  ],
   "permissions": {
     "allow": [
       "Skill(do:nothing)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "bigcodegen/mcp-neovim-server"
+  ],
+  "enableAllProjectMcpServers": true
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/examine"
+	chaperoneInit "github.com/bmf/chaperone/internal/init"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/recorder"
 	"github.com/bmf/chaperone/internal/secrets"
@@ -18,10 +19,13 @@ import (
 	"github.com/elazarl/goproxy"
 )
 
-// requestMetadata stores request-specific data for HAR recording.
+// requestMetadata stores request-specific data for HAR recording and response logging.
 type requestMetadata struct {
-	startTime time.Time
-	request   *http.Request
+	startTime              time.Time
+	request                *http.Request
+	strippedHeaders        []string
+	requestID              string // For correlating request/response log colors
+	colorR, colorG, colorB int    // Pre-computed correlation color for this connection
 }
 
 // connectHandler creates a CONNECT handler that decides whether to MITM or transparently tunnel.
@@ -30,6 +34,17 @@ func connectHandler(registry service.ServiceRegistry, certStore *GoproxyCertStor
 		// Add request ID to context for logging
 		reqCtx := log.WithRequestID(ctx.Req.Context())
 		ctx.Req = ctx.Req.WithContext(reqCtx)
+
+		// Store request ID and pre-generate correlation color for this connection
+		// All requests through this CONNECT tunnel will use the same color
+		requestID := log.RequestID(reqCtx)
+		r, g, b := log.NextCorrelationColor()
+		ctx.UserData = &requestMetadata{
+			requestID: requestID,
+			colorR:    r,
+			colorG:    g,
+			colorB:    b,
+		}
 
 		if service.ShouldMITM(registry, host) {
 			log.Debug(reqCtx, "handling CONNECT request with MITM", "host", host)
@@ -131,8 +146,16 @@ func dropHandler(registry service.ServiceRegistry, logger *slog.Logger) func(*ht
 }
 
 // knownAuthHeaders is the list of headers that commonly carry authentication credentials.
-// These are automatically stripped from ALL requests to configured services to prevent
-// credential leakage when applications send unintended auth headers.
+// These are automatically stripped from all outgoing requests for safety.  The problematic
+// scenario being this:
+//   - A user uses a tool that requires an API KEY, for example, Claude Code
+//   - The user overrides the tool configuration to specify the url for a third party LLM provider (e.g., ANTHROPIC_BASE_URL=z.ai/anthropic)
+//     In this situation, if the user runs Claude Code without specifying the env var ANTHROPIC_API_KEY and the user is logged
+//     in to a Claude Code subscription, the user's subscription credentials will be sent to z.ai with no visible indication
+//   - Although this is known/standard behavior and to be expected on some level, this is such an easy configuration mistake to make
+//     that I think it is going to be extremely common.  I made the mistake several times when testing this application, even after knowing about it
+//   - In this application, stripping existing auth shouldn't be a problem.  If this is problematic for your use case, please
+//     let me know what your use case is and why the traffic needs to go through this proxy rather than bypassing it.
 var knownAuthHeaders = []string{
 	"authorization",
 	"x-api-key",
@@ -180,19 +203,18 @@ func securityStripAuthHandler(registry service.ServiceRegistry, logger *slog.Log
 			}
 		}
 
-		// Log a BIG warning if we stripped anything
+		// Store stripped headers in UserData for later logging (combined with inject message)
 		if len(strippedHeaders) > 0 {
-			// Use slog directly for WARN level since our log package doesn't have Warn
-			slog.Default().Warn(""+
-				"████████████████████████████████████████████████████████████████████████████████\n"+
-				"██  SECURITY: Stripped existing auth headers from request!                    ██\n"+
-				"██  This prevents credential leakage to third-party services.                 ██\n"+
-				"██  The client application sent credentials that were NOT from Chaperone.     ██\n"+
-				"████████████████████████████████████████████████████████████████████████████████",
-				"host", r.Host,
-				"path", r.URL.Path,
-				"stripped_headers", strippedHeaders,
-			)
+			if meta, ok := ctx.UserData.(*requestMetadata); ok {
+				meta.strippedHeaders = strippedHeaders
+			} else {
+				// Create metadata if it doesn't exist
+				ctx.UserData = &requestMetadata{
+					startTime:       time.Now(),
+					request:         r,
+					strippedHeaders: strippedHeaders,
+				}
+			}
 		}
 
 		return r, nil
@@ -287,11 +309,66 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 				http.StatusBadGateway, "Authentication failed")
 		}
 
-		log.Info(reqCtx, "injected credential",
+		// Build log args - include stripped headers if any
+		logArgs := []any{
 			"credential_ref", svc.CredentialRef,
 			"auth_strategy", svc.AuthStrategyRef,
 			"path", r.URL.Path,
-			"host", r.Host)
+			"host", r.Host,
+		}
+
+		// Include stripped headers from earlier handler if any
+		if meta, ok := ctx.UserData.(*requestMetadata); ok && len(meta.strippedHeaders) > 0 {
+			logArgs = append(logArgs, "stripped_headers", meta.strippedHeaders)
+		}
+
+		log.Info(reqCtx, "injected credential", logArgs...)
+
+		return r, nil
+	}
+}
+
+// requestIDHandler creates a handler that ensures request ID and correlation color are set in context.
+// This should run FIRST so all subsequent handlers have access to these for logging.
+func requestIDHandler() func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		var requestID string
+		var colorR, colorG, colorB int
+
+		// Get request ID and color from UserData (set in connectHandler)
+		if meta, ok := ctx.UserData.(*requestMetadata); ok {
+			requestID = meta.requestID
+			colorR, colorG, colorB = meta.colorR, meta.colorG, meta.colorB
+		}
+
+		// If no request ID, create one
+		if requestID == "" {
+			reqCtx := log.WithRequestID(r.Context())
+			requestID = log.RequestID(reqCtx)
+		}
+
+		// If no color, generate one
+		if colorR == 0 && colorG == 0 && colorB == 0 {
+			colorR, colorG, colorB = log.NextCorrelationColor()
+		}
+
+		// Store in UserData for response handler if not already there
+		if meta, ok := ctx.UserData.(*requestMetadata); ok {
+			meta.requestID = requestID
+			meta.colorR, meta.colorG, meta.colorB = colorR, colorG, colorB
+		} else {
+			ctx.UserData = &requestMetadata{
+				requestID: requestID,
+				colorR:    colorR,
+				colorG:    colorG,
+				colorB:    colorB,
+			}
+		}
+
+		// Update request context with request ID and color for logging
+		reqCtx := log.WithRequestIDValue(r.Context(), requestID)
+		reqCtx = log.WithCorrelationColor(reqCtx, colorR, colorG, colorB)
+		r = r.WithContext(reqCtx)
 
 		return r, nil
 	}
@@ -300,10 +377,18 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 // recordRequestHandler creates a handler that captures request start time for HAR recording.
 func recordRequestHandler(rec *recorder.Recorder) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		// Store request metadata for response handler
-		ctx.UserData = &requestMetadata{
-			startTime: time.Now(),
-			request:   r.Clone(r.Context()),
+		// Get or create metadata
+		if meta, ok := ctx.UserData.(*requestMetadata); ok {
+			meta.request = r.Clone(r.Context())
+			if meta.startTime.IsZero() {
+				meta.startTime = time.Now()
+			}
+		} else {
+			ctx.UserData = &requestMetadata{
+				startTime: time.Now(),
+				request:   r.Clone(r.Context()),
+				requestID: log.RequestID(r.Context()),
+			}
 		}
 
 		return r, nil
@@ -311,6 +396,7 @@ func recordRequestHandler(rec *recorder.Recorder) func(*http.Request, *goproxy.P
 }
 
 // recordResponseHandler creates a handler that completes HAR entry with response data.
+// It also logs the response status code for the request.
 func recordResponseHandler(rec *recorder.Recorder) func(*http.Response, *goproxy.ProxyCtx) *http.Response {
 	return func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 		if ctx.UserData == nil {
@@ -318,7 +404,7 @@ func recordResponseHandler(rec *recorder.Recorder) func(*http.Response, *goproxy
 		}
 
 		meta, ok := ctx.UserData.(*requestMetadata)
-		if !ok {
+		if !ok || meta.request == nil {
 			return resp
 		}
 
@@ -326,6 +412,26 @@ func recordResponseHandler(rec *recorder.Recorder) func(*http.Response, *goproxy
 		endTime := time.Now()
 		recordResponse := rec.RecordRequest(meta.request, meta.startTime)
 		recordResponse(resp, nil, endTime)
+
+		// Log request completion with response status
+		// Use stored request ID for log correlation with the request line
+		reqCtx := meta.request.Context()
+		duration := endTime.Sub(meta.startTime)
+
+		logArgs := []any{
+			"method", meta.request.Method,
+			"host", meta.request.Host,
+			"path", meta.request.URL.Path,
+			"status", resp.StatusCode,
+			"duration_ms", duration.Milliseconds(),
+		}
+
+		// Include stripped headers if any
+		if len(meta.strippedHeaders) > 0 {
+			logArgs = append(logArgs, "stripped_headers", meta.strippedHeaders)
+		}
+
+		log.Info(reqCtx, "request completed", logArgs...)
 
 		return resp
 	}
@@ -380,6 +486,70 @@ func examineResponseHandler(examineLogger *examine.Logger) func(*http.Response, 
 		examineLogger.LogResponse(resp)
 
 		// Pass through unchanged - no modification
+		return resp
+	}
+}
+
+// initConnectHandler creates a CONNECT handler that MITMs ALL connections for init mode.
+// Similar to examineConnectHandler, this always MITMs to analyze traffic for auth discovery.
+func initConnectHandler(certStore *GoproxyCertStore, logger *slog.Logger) func(string, *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
+	return func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
+		reqCtx := log.WithRequestID(ctx.Req.Context())
+		ctx.Req = ctx.Req.WithContext(reqCtx)
+
+		log.Debug(reqCtx, "init: MITM connection", "host", host)
+
+		tlsConfigFunc := func(host string, ctx *goproxy.ProxyCtx) (*tls.Config, error) {
+			cert, err := certStore.Fetch(host, nil)
+			if err != nil {
+				log.Error(reqCtx, "failed to get certificate for MITM", err, "host", host)
+				return nil, err
+			}
+
+			return &tls.Config{
+				Certificates: []tls.Certificate{*cert},
+				MinVersion:   tls.VersionTLS12,
+			}, nil
+		}
+
+		return &goproxy.ConnectAction{
+			Action:    goproxy.ConnectMitm,
+			TLSConfig: tlsConfigFunc,
+		}, host
+	}
+}
+
+// initRequestHandler creates a handler for init mode that analyzes requests for auth patterns.
+func initRequestHandler(detector *chaperoneInit.Detector, evidence *chaperoneInit.Evidence, onFinding FindingCallback) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		// Get hosts before analysis to track new findings
+		hostsBefore := len(evidence.GetAllHosts())
+
+		// Analyze request for auth patterns
+		detector.AnalyzeRequest(r)
+
+		// Check if this is a new finding we should report
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+
+		// If we found something new for this host, report it
+		if onFinding != nil {
+			topFinding := evidence.GetTopFinding(host)
+			if topFinding != nil && len(evidence.GetAllHosts()) > hostsBefore {
+				onFinding(host, topFinding)
+			}
+		}
+
+		// Pass through unchanged
+		return r, nil
+	}
+}
+
+// initResponseHandler creates a no-op response handler for init mode.
+func initResponseHandler() func(*http.Response, *goproxy.ProxyCtx) *http.Response {
+	return func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 		return resp
 	}
 }

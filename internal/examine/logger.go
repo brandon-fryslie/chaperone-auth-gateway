@@ -1,10 +1,12 @@
 package examine
 
 import (
-	"fmt"
+	"context"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/bmf/chaperone/internal/log"
 )
 
 // Config holds configuration options for examine mode logging.
@@ -21,164 +23,174 @@ type Config struct {
 	MaxBodyBytes int
 }
 
-// Logger outputs examine-mode request/response information in a human-readable format.
+// Logger outputs examine-mode request/response information using structured logging.
 type Logger struct {
-	output io.Writer
 	config Config
 }
 
-// NewLogger creates a new examine-mode logger that writes to the specified writer.
-func NewLogger(w io.Writer, config Config) *Logger {
+// NewLogger creates a new examine-mode logger.
+// The io.Writer parameter is kept for backward compatibility but is no longer used.
+func NewLogger(_ io.Writer, config Config) *Logger {
 	// Set sensible defaults
 	if config.MaxBodyBytes == 0 {
 		config.MaxBodyBytes = 4096 // 4KB default
 	}
 	return &Logger{
-		output: w,
 		config: config,
 	}
 }
 
-// LogRequest logs a request in examine mode, focusing on information that could contain authentication.
-// Respects the logger's configuration to control what is displayed.
+// LogRequest logs a request in examine mode using structured logging.
 func (l *Logger) LogRequest(r *http.Request) {
-	fmt.Fprintf(l.output, "\n%s\n", strings.Repeat("=", 80))
-	fmt.Fprintf(l.output, "REQUEST: %s %s\n", r.Method, r.URL.String())
-	fmt.Fprintf(l.output, "%s\n", strings.Repeat("-", 80))
+	ctx := r.Context()
 
-	// Headers that may contain auth
-	fmt.Fprintln(l.output, "Headers (potentially containing auth):")
-	hasAuthHeaders := false
+	// Build log arguments
+	args := []any{
+		"method", r.Method,
+		"url", r.URL.String(),
+		"host", r.Host,
+	}
+
+	// Collect auth-relevant headers
+	var authHeaders []string
 	for name, values := range r.Header {
 		if IsAuthRelevant(name) {
-			hasAuthHeaders = true
 			for _, v := range values {
-				fmt.Fprintf(l.output, "  %s: %s\n", name, v)
+				authHeaders = append(authHeaders, name+": "+v)
 			}
 		}
 	}
-	if !hasAuthHeaders {
-		fmt.Fprintln(l.output, "  (none)")
+	if len(authHeaders) > 0 {
+		args = append(args, "auth_headers", authHeaders)
 	}
 
 	// Query parameters (optional)
-	if l.config.ShowParams {
-		fmt.Fprintln(l.output, "\nQuery Parameters:")
-		if len(r.URL.Query()) > 0 {
-			for key, values := range r.URL.Query() {
-				for _, v := range values {
-					fmt.Fprintf(l.output, "  %s: %s\n", key, v)
-				}
+	if l.config.ShowParams && len(r.URL.Query()) > 0 {
+		var params []string
+		for key, values := range r.URL.Query() {
+			for _, v := range values {
+				params = append(params, key+"="+v)
 			}
-		} else {
-			fmt.Fprintln(l.output, "  (none)")
 		}
+		args = append(args, "params", params)
 	}
 
 	// Cookies (optional)
 	if l.config.ShowCookies {
-		fmt.Fprintln(l.output, "\nCookies:")
 		cookies := r.Cookies()
 		if len(cookies) > 0 {
+			var cookieStrs []string
 			for _, c := range cookies {
-				fmt.Fprintf(l.output, "  %s: %s\n", c.Name, c.Value)
+				cookieStrs = append(cookieStrs, c.Name+"="+c.Value)
 			}
-		} else {
-			fmt.Fprintln(l.output, "  (none)")
+			args = append(args, "cookies", cookieStrs)
 		}
 	}
 
 	// Request body (optional)
 	if l.config.ShowBody && r.Body != nil {
-		fmt.Fprintln(l.output, "\nRequest Body:")
 		body, err := io.ReadAll(io.LimitReader(r.Body, int64(l.config.MaxBodyBytes)))
 		if err != nil {
-			fmt.Fprintf(l.output, "  (error reading body: %v)\n", err)
-		} else if len(body) == 0 {
-			fmt.Fprintln(l.output, "  (empty)")
-		} else {
+			args = append(args, "body_error", err.Error())
+		} else if len(body) > 0 {
 			truncated := len(body) == l.config.MaxBodyBytes
-			fmt.Fprintf(l.output, "  %s", string(body))
+			bodyStr := string(body)
 			if truncated {
-				fmt.Fprintln(l.output, "\n  (truncated at max body bytes)")
-			} else {
-				fmt.Fprintln(l.output)
+				bodyStr += "... (truncated)"
 			}
+			args = append(args, "body", bodyStr)
 		}
-		// Note: Body is consumed, but in examine mode we're just logging, not forwarding
 	}
 
-	fmt.Fprintf(l.output, "%s\n", strings.Repeat("=", 80))
+	log.Info(ctx, "request", args...)
 }
 
-// LogResponse logs a response in examine mode, focusing on information that could contain authentication.
-// Respects the logger's configuration to control what is displayed.
+// LogResponse logs a response in examine mode using structured logging.
 func (l *Logger) LogResponse(resp *http.Response) {
-	if !l.config.ShowResponse {
+	if !l.config.ShowResponse || resp == nil {
 		return
 	}
 
-	fmt.Fprintf(l.output, "\n%s\n", strings.Repeat("=", 80))
-	fmt.Fprintf(l.output, "RESPONSE: %d %s\n", resp.StatusCode, resp.Status)
-	fmt.Fprintf(l.output, "%s\n", strings.Repeat("-", 80))
+	ctx := context.Background()
+	if resp.Request != nil {
+		ctx = resp.Request.Context()
+	}
 
-	// Headers that may contain auth
-	fmt.Fprintln(l.output, "Headers (potentially containing auth):")
-	hasAuthHeaders := false
+	args := []any{
+		"status", resp.StatusCode,
+	}
+
+	// Add request info if available
+	if resp.Request != nil {
+		args = append(args,
+			"method", resp.Request.Method,
+			"host", resp.Request.Host,
+			"path", resp.Request.URL.Path,
+		)
+	}
+
+	// Collect auth-relevant headers
+	var authHeaders []string
 	for name, values := range resp.Header {
 		if IsAuthRelevant(name) {
-			hasAuthHeaders = true
 			for _, v := range values {
-				fmt.Fprintf(l.output, "  %s: %s\n", name, v)
+				authHeaders = append(authHeaders, name+": "+v)
 			}
 		}
 	}
-	if !hasAuthHeaders {
-		fmt.Fprintln(l.output, "  (none)")
+	if len(authHeaders) > 0 {
+		args = append(args, "auth_headers", authHeaders)
 	}
 
 	// Cookies from Set-Cookie headers
 	if l.config.ShowCookies {
-		fmt.Fprintln(l.output, "\nSet-Cookie Headers:")
 		cookies := resp.Cookies()
 		if len(cookies) > 0 {
+			var cookieStrs []string
 			for _, c := range cookies {
-				fmt.Fprintf(l.output, "  %s: %s", c.Name, c.Value)
-				if c.MaxAge != 0 {
-					fmt.Fprintf(l.output, " (MaxAge: %d)", c.MaxAge)
-				}
+				info := c.Name + "=" + c.Value
 				if c.Secure {
-					fmt.Fprint(l.output, " [Secure]")
+					info += " [Secure]"
 				}
 				if c.HttpOnly {
-					fmt.Fprint(l.output, " [HttpOnly]")
+					info += " [HttpOnly]"
 				}
-				fmt.Fprintln(l.output)
+				cookieStrs = append(cookieStrs, info)
 			}
-		} else {
-			fmt.Fprintln(l.output, "  (none)")
+			args = append(args, "set_cookies", cookieStrs)
 		}
 	}
 
 	// Response body (optional)
 	if l.config.ShowBody && resp.Body != nil {
-		fmt.Fprintln(l.output, "\nResponse Body:")
 		body, err := io.ReadAll(io.LimitReader(resp.Body, int64(l.config.MaxBodyBytes)))
 		if err != nil {
-			fmt.Fprintf(l.output, "  (error reading body: %v)\n", err)
-		} else if len(body) == 0 {
-			fmt.Fprintln(l.output, "  (empty)")
-		} else {
+			args = append(args, "body_error", err.Error())
+		} else if len(body) > 0 {
 			truncated := len(body) == l.config.MaxBodyBytes
-			fmt.Fprintf(l.output, "  %s", string(body))
+			bodyStr := string(body)
 			if truncated {
-				fmt.Fprintln(l.output, "\n  (truncated at max body bytes)")
-			} else {
-				fmt.Fprintln(l.output)
+				bodyStr += "... (truncated)"
 			}
+			args = append(args, "body", bodyStr)
 		}
-		// Note: Body is consumed, but in examine mode we're just logging, not forwarding
 	}
 
-	fmt.Fprintf(l.output, "%s\n", strings.Repeat("=", 80))
+	log.Info(ctx, "response", args...)
+}
+
+// FormatHeaders formats headers for display, filtering to auth-relevant ones.
+func FormatHeaders(headers http.Header) string {
+	var parts []string
+	for name, values := range headers {
+		if IsAuthRelevant(name) {
+			for _, v := range values {
+				parts = append(parts, name+": "+v)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return "(none)"
+	}
+	return strings.Join(parts, ", ")
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/examine"
+	chaperoneInit "github.com/bmf/chaperone/internal/init"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/recorder"
@@ -135,6 +136,9 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	proxy.OnRequest().HandleConnectFunc(connectHandler(registry, certStore, logger))
 
 	// Configure request handlers in order:
+	// 0. Request ID setup (MUST be first so all handlers have request ID for logging)
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(requestIDHandler())
+
 	// 1. Drop handler (block requests matching drop patterns)
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(dropHandler(registry, logger))
 
@@ -308,4 +312,59 @@ func (s *Server) GetHAR() ([]byte, error) {
 		return nil, fmt.Errorf("recorder not initialized")
 	}
 	return s.recorder.ToJSON()
+}
+
+// FindingCallback is called when a new auth finding is detected during init mode.
+type FindingCallback func(host string, finding *chaperoneInit.Finding)
+
+// NewInitProxy creates a MITM proxy for the init wizard.
+// It analyzes requests to detect authentication patterns and policy constraints.
+// The detector analyzes requests and the callback reports findings in real-time.
+func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, detector *chaperoneInit.Detector, evidence *chaperoneInit.Evidence, onFinding FindingCallback) *Server {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	s := &Server{
+		config:      cfg,
+		logger:      logger,
+		shutdownMgr: shutdownMgr,
+	}
+
+	// Create goproxy server
+	proxy := goproxy.NewProxyHttpServer()
+	proxy.Verbose = (cfg.Logging.Level == "debug")
+
+	// Disable proxy for upstream connections to avoid proxy loops
+	proxy.Tr.Proxy = nil
+
+	// Create certificate store adapter
+	certStore := NewGoproxyCertStore(certCache)
+
+	// CONNECT handler: MITM ALL connections (like examine mode)
+	proxy.OnRequest().HandleConnectFunc(initConnectHandler(certStore, logger))
+
+	// Request handler: Analyze for auth patterns, then forward unmodified
+	proxy.OnRequest().DoFunc(initRequestHandler(detector, evidence, onFinding))
+
+	// Response handler: No-op (passthrough)
+	proxy.OnResponse().DoFunc(initResponseHandler())
+
+	s.proxy = proxy
+
+	// Create HTTP server with the proxy
+	s.httpServer = &http.Server{
+		Handler:           proxy,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       1 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	// Register shutdown function
+	if shutdownMgr != nil {
+		shutdownMgr.Register(s.Stop)
+	}
+
+	return s
 }
