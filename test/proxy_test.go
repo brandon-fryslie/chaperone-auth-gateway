@@ -106,7 +106,7 @@ func testServerStartsOnConfiguredPort(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Server should start successfully")
 	defer proxyServer.Stop(ctx)
 
@@ -140,7 +140,7 @@ func testServerBindsToConfiguredAddress(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Server should start successfully")
 	defer proxyServer.Stop(ctx)
 
@@ -173,7 +173,7 @@ func testServerStopsCleanly(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Server should start successfully")
 
 	// Stop server
@@ -212,7 +212,7 @@ func testServerCanRestartAfterStop(t *testing.T) {
 
 	// First start
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "First start should succeed")
 
 	// Stop
@@ -225,7 +225,7 @@ func testServerCanRestartAfterStop(t *testing.T) {
 	// Second start (new instance)
 	shutdownMgr2 := shutdown.NewManager(logger)
 	proxyServer2 := proxy.New(cfg, logger, shutdownMgr2)
-	err = proxyServer2.Start(ctx)
+	err = proxyServer2.Start()
 	require.NoError(t, err, "Server should restart successfully")
 	defer proxyServer2.Stop(ctx)
 
@@ -253,11 +253,10 @@ func testServerGracefulShutdownWithActiveConnections(t *testing.T) {
 	}
 
 	// Start server
-	ctx := context.Background()
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Server should start successfully")
 
 	// Create a connection (but don't use it)
@@ -349,7 +348,7 @@ func testCONNECTRequestEstablishesTunnel(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -414,7 +413,7 @@ func testTunnelBidirectionalDataFlow(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -469,7 +468,7 @@ func testCONNECTInvalidHostReturnsError(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -536,7 +535,7 @@ func testCONNECTTimeoutHandling(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -594,7 +593,7 @@ func testTunnelCleanupOnClientDisconnect(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -656,7 +655,7 @@ func testTunnelCleanupOnUpstreamDisconnect(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -750,7 +749,7 @@ func testConcurrentTunnelsToSameUpstream(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -841,7 +840,7 @@ func testConcurrentTunnelsToDifferentUpstreams(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -928,7 +927,7 @@ func testTunnelIsolationDifferentClients(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -1042,7 +1041,7 @@ func testHTTPSRequestThroughProxy(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -1110,7 +1109,7 @@ func testHTTPSPostWithBody(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -1180,7 +1179,7 @@ func testHTTPSStreamingResponse(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 	proxyServer := proxy.New(cfg, logger, shutdownMgr)
-	err := proxyServer.Start(ctx)
+	err := proxyServer.Start()
 	require.NoError(t, err, "Proxy should start")
 	defer proxyServer.Stop(ctx)
 
@@ -1251,7 +1250,7 @@ func TestProxyPhase1CompletionChecklist(t *testing.T) {
 				logger := slog.Default()
 				shutdownMgr := shutdown.NewManager(logger)
 				proxyServer := proxy.New(cfg, logger, shutdownMgr)
-				if err := proxyServer.Start(ctx); err != nil {
+				if err := proxyServer.Start(); err != nil {
 					return err
 				}
 				defer proxyServer.Stop(ctx)
@@ -1289,7 +1288,7 @@ func TestProxyPhase1CompletionChecklist(t *testing.T) {
 				logger := slog.Default()
 				shutdownMgr := shutdown.NewManager(logger)
 				proxyServer := proxy.New(cfg, logger, shutdownMgr)
-				if err := proxyServer.Start(ctx); err != nil {
+				if err := proxyServer.Start(); err != nil {
 					return err
 				}
 				defer proxyServer.Stop(ctx)
@@ -1342,7 +1341,7 @@ func TestProxyPhase1CompletionChecklist(t *testing.T) {
 				logger := slog.Default()
 				shutdownMgr := shutdown.NewManager(logger)
 				proxyServer := proxy.New(cfg, logger, shutdownMgr)
-				if err := proxyServer.Start(ctx); err != nil {
+				if err := proxyServer.Start(); err != nil {
 					return err
 				}
 				defer proxyServer.Stop(ctx)
@@ -1395,7 +1394,7 @@ func TestProxyPhase1CompletionChecklist(t *testing.T) {
 				logger := slog.Default()
 				shutdownMgr := shutdown.NewManager(logger)
 				proxyServer := proxy.New(cfg, logger, shutdownMgr)
-				if err := proxyServer.Start(ctx); err != nil {
+				if err := proxyServer.Start(); err != nil {
 					return err
 				}
 				defer proxyServer.Stop(ctx)
@@ -1448,11 +1447,10 @@ func TestProxyPhase1CompletionChecklist(t *testing.T) {
 					},
 					Logging: config.LoggingConfig{Level: "info", Format: "json", Output: "stdout"},
 				}
-				ctx := context.Background()
 				logger := slog.Default()
 				shutdownMgr := shutdown.NewManager(logger)
 				proxyServer := proxy.New(cfg, logger, shutdownMgr)
-				if err := proxyServer.Start(ctx); err != nil {
+				if err := proxyServer.Start(); err != nil {
 					return err
 				}
 

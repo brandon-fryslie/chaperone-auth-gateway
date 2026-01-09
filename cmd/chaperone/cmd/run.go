@@ -250,7 +250,7 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	// Start proxy server
-	if err := proxyServer.Start(ctx); err != nil {
+	if err := proxyServer.Start(); err != nil {
 		return fmt.Errorf("failed to start proxy server: %w", err)
 	}
 

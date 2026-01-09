@@ -163,7 +163,7 @@ func TestBearerTokenAuthenticationEndToEnd(t *testing.T) {
 
 		
 	})
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err)
 	defer proxyServer.Stop(ctx)
 
@@ -317,7 +317,7 @@ func TestCustomHeaderAuthenticationEndToEnd(t *testing.T) {
 
 		
 	})
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err)
 	defer proxyServer.Stop(ctx)
 
@@ -456,7 +456,7 @@ func TestSecretFetchFailureReturns503(t *testing.T) {
 
 		
 	})
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err)
 	defer proxyServer.Stop(ctx)
 
@@ -585,7 +585,7 @@ func TestUnknownStrategyReturns502(t *testing.T) {
 
 		
 	})
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err)
 	defer proxyServer.Stop(ctx)
 
@@ -728,7 +728,7 @@ func TestConcurrentAuthenticatedRequests(t *testing.T) {
 
 		
 	})
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err)
 	defer proxyServer.Stop(ctx)
 
@@ -895,7 +895,7 @@ func TestAuthStrategyPreservesClientHeaders(t *testing.T) {
 
 		
 	})
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err)
 	defer proxyServer.Stop(ctx)
 
@@ -1052,7 +1052,7 @@ func TestStrategyRegistryLookup(t *testing.T) {
 
 			
 		})
-		err = proxyServer.Start(ctx)
+		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
 
@@ -1172,7 +1172,7 @@ func TestStrategyRegistryLookup(t *testing.T) {
 
 			
 		})
-		err = proxyServer.Start(ctx)
+		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
 
@@ -1311,7 +1311,7 @@ func TestAuthPreservesRequestBody(t *testing.T) {
 
 		
 	})
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err)
 	defer proxyServer.Stop(ctx)
 

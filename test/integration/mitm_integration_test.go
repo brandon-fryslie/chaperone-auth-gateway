@@ -144,7 +144,7 @@ func TestSelectiveMITMWithTrustedCA(t *testing.T) {
 	shutdownMgr := shutdown.NewManager(logger)
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err, "Proxy server should start")
 	defer proxyServer.Stop(ctx)
 
@@ -249,7 +249,7 @@ func TestTransparentTunnelForNonConfiguredDomains(t *testing.T) {
 	shutdownMgr := shutdown.NewManager(logger)
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err, "Proxy server should start")
 	defer proxyServer.Stop(ctx)
 
@@ -361,7 +361,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
-		err = proxyServer.Start(ctx)
+		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
 
@@ -459,7 +459,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
-		err = proxyServer.Start(ctx)
+		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
 
@@ -556,7 +556,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
-		err = proxyServer.Start(ctx)
+		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
 
@@ -669,7 +669,7 @@ func TestCertificateTrustValidation(t *testing.T) {
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
-		err = proxyServer.Start(ctx)
+		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
 
@@ -757,7 +757,7 @@ func TestCertificateTrustValidation(t *testing.T) {
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, nil)
-		err = proxyServer.Start(ctx)
+		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
 

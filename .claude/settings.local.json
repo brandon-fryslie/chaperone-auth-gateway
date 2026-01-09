@@ -1,11 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Skill(do:nothing)"
+      "Skill(do:nothing)",
+      "Bash(bd list:*)",
+      "Skill(do:plan)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "bigcodegen/mcp-neovim-server"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

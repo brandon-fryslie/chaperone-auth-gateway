@@ -210,7 +210,7 @@ func runWizardInit() error {
 		wizard.ReportFinding(host, finding)
 	})
 
-	if err := server.Start(ctx); err != nil {
+	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start init proxy: %w", err)
 	}
 

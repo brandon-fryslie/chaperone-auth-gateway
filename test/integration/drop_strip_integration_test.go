@@ -136,7 +136,7 @@ func TestDropPatternBlocksRequests(t *testing.T) {
 
 			// Start proxy
 			ctx := context.Background()
-			err = proxyServer.Start(ctx)
+			err = proxyServer.Start()
 			require.NoError(t, err)
 			defer proxyServer.Stop(ctx)
 
@@ -313,7 +313,7 @@ func TestStripHeadersRemovesHeaders(t *testing.T) {
 
 			// Start proxy
 			ctx := context.Background()
-			err = proxyServer.Start(ctx)
+			err = proxyServer.Start()
 			require.NoError(t, err)
 			defer proxyServer.Stop(ctx)
 
@@ -465,7 +465,7 @@ func TestStripPreventsWrongCredentialLeakage(t *testing.T) {
 
 	// Start proxy
 	ctx := context.Background()
-	err = proxyServer.Start(ctx)
+	err = proxyServer.Start()
 	require.NoError(t, err)
 	defer proxyServer.Stop(ctx)
 
