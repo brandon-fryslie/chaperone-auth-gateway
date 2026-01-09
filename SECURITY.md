@@ -144,7 +144,7 @@ Recommendations:
   • See: chaperone docs security
 ```
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented
 
 ---
 

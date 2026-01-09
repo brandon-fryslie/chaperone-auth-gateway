@@ -6,6 +6,7 @@ MITM proxy that injects API credentials into requests. Apps use proxy without ha
 ## CLI Commands
 - `cmd/chaperone/cmd/inject.go` - Main mode: inject credentials (was `run`)
 - `cmd/chaperone/cmd/examine.go` - Auth discovery mode (passthrough logging)
+- `cmd/chaperone/cmd/check.go` - Security posture check (assess configuration)
 - `cmd/chaperone/cmd/root.go` - Root command, config resolution, CA path helpers
 
 ## Core Proxy Architecture
@@ -84,6 +85,7 @@ MITM proxy that injects API credentials into requests. Apps use proxy without ha
 - `test/integration/auth_integration_test.go` - End-to-end auth tests
 - `test/integration/mitm_integration_test.go` - MITM/TLS tests
 - `internal/audit/logger_test.go` - Audit logger unit tests
+- `cmd/chaperone/cmd/check_test.go` - Check command unit tests
 
 ## Key Workflows
 
@@ -157,9 +159,14 @@ chaperone examine                   # Basic (just headers)
 chaperone examine -p --show-cookies # Show params & cookies
 chaperone examine -b -r             # Show bodies & responses
 chaperone examine -o results.txt    # Save to file (enables all flags)
+
+# Security check
+chaperone check                     # Show security posture
+chaperone check -c custom.toml      # Check with specific config
 ```
 
 ## Recent Features
+- **Security check**: `chaperone check` command to assess security posture (cmd/chaperone/cmd/check.go)
 - **Audit logging**: JSON audit trail for credential injections (internal/audit/)
 - **Placeholder authentication**: Optional placeholder token verification (Layer 2 security)
 - **Examine mode flags**: `-b` (body), `-p` (params), `--show-cookies`, `-r` (response), `-o` (output file)
