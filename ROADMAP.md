@@ -24,7 +24,7 @@
 - [ ] **Bundled CA certificates**
   Ship trusted CA bundle. Don't trust system CA store for upstream connections. Prevents CA injection attacks.
 
-- [ ] **`chaperone check` command**
+- [x] **`chaperone check` command**
   Security posture assessment tool. Shows current configuration and recommendations without nagging.
 
 ### Lower Priority
