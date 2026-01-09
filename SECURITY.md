@@ -60,7 +60,7 @@ We don't pester you about security. Run `chaperone check` to see what you can im
 3. Chaperone recognizes the placeholder, swaps in real credential
 4. Requests without placeholder pass through unchanged (no injection)
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented (placeholder authentication)
 
 ---
 
@@ -97,7 +97,7 @@ User: you
 | Measure | Protection | Status |
 |---------|------------|--------|
 | Own CA bundle | Attacker's CA in system store doesn't affect us | 🔲 Planned |
-| Ignore system proxy | HTTP_PROXY can't redirect our upstream traffic | 🔲 Planned |
+| Ignore system proxy | HTTP_PROXY can't redirect our upstream traffic | ✅ Implemented |
 | Upstream TLS validation | DNS/hosts redirect fails (bad cert) | ✅ Implemented |
 
 ---
@@ -111,7 +111,11 @@ User: you
 
 **Why:** Provides forensic trail and protects against memory dump attacks.
 
-**Status:** 🔲 Planned
+| Measure | Protection | Status |
+|---------|------------|--------|
+| Audit logging | Forensic trail of credential injections | ✅ Implemented |
+| Memory locking | Prevent swap to disk (Linux only) | 🔲 Planned |
+| Memory zeroing | Clear credentials after use (Linux only) | 🔲 Planned |
 
 ---
 

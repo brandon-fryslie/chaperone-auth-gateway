@@ -52,6 +52,13 @@ MITM proxy that injects API credentials into requests. Apps use proxy without ha
   - `IsAuthRelevant()` - Filter out noise headers
   - Supports glob patterns, case-insensitive
 
+## Audit Logging
+- `internal/audit/logger.go` - Audit trail for credential injections
+  - `Logger` - Thread-safe JSON logger
+  - `Entry` - Audit log entry (timestamp, event, service, host, path, method, auth_strategy, request_id)
+  - `NewLogger()` - Create logger (stdout or file with 0600 permissions)
+  - `Log()` - Write audit entry as JSON
+
 ## MITM / TLS
 - `internal/mitm/ca.go` - CA generation/loading (`LoadOrGenerateCA`)
 - `internal/mitm/certcache.go` - Certificate cache (generate certs per hostname)
@@ -76,6 +83,7 @@ MITM proxy that injects API credentials into requests. Apps use proxy without ha
 ## Tests
 - `test/integration/auth_integration_test.go` - End-to-end auth tests
 - `test/integration/mitm_integration_test.go` - MITM/TLS tests
+- `internal/audit/logger_test.go` - Audit logger unit tests
 
 ## Key Workflows
 
@@ -117,11 +125,19 @@ port = 4010
 [logging]
 level = "info"  # debug, info, warn, error
 
+# Audit logging (optional)
+[audit]
+enabled = true
+path = "/var/log/chaperone/audit.log"  # or "stdout"
+
 [[services]]
 name = "openai"
 host_pattern = "api.openai.com"
 auth_strategy = "bearer"  # or "header:X-API-Key"
 credential_ref = "env:OPENAI_API_KEY"  # or "file:/path" or "keychain:service/account"
+
+# Optional: Placeholder token for process authentication
+placeholder = "chap_openai_xxxxxxxx"  # App uses this, Chaperone swaps for real key
 
 [services.policy]
 allowed_methods = ["GET", "POST"]
@@ -144,6 +160,8 @@ chaperone examine -o results.txt    # Save to file (enables all flags)
 ```
 
 ## Recent Features
+- **Audit logging**: JSON audit trail for credential injections (internal/audit/)
+- **Placeholder authentication**: Optional placeholder token verification (Layer 2 security)
 - **Examine mode flags**: `-b` (body), `-p` (params), `--show-cookies`, `-r` (response), `-o` (output file)
 - **Header capitalization detection**: Warns when client sends header we're trying to inject
 - **Glob pattern exclusions**: Examine mode filters `x-stainless-*` headers via glob
