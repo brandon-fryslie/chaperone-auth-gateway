@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bmf/chaperone/internal/audit"
 	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/examine"
 	chaperoneInit "github.com/bmf/chaperone/internal/init"
-	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/recorder"
 	"github.com/bmf/chaperone/internal/secrets"
@@ -31,6 +31,7 @@ type Server struct {
 	httpServer  *http.Server
 	listener    net.Listener
 	recorder    *recorder.Recorder
+	auditLogger *audit.Logger
 	mu          sync.Mutex
 	started     bool
 }
@@ -101,6 +102,25 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		recorder:    recorder.NewRecorder(),
 	}
 
+	// Create audit logger
+	auditLogger, err := audit.NewLogger(audit.Config{
+		Enabled: cfg.Audit.Enabled,
+		Path:    cfg.Audit.Path,
+	})
+	if err != nil {
+		logger.Warn("failed to create audit logger", "error", err)
+		// Create disabled logger as fallback
+		auditLogger = &audit.Logger{}
+	}
+	s.auditLogger = auditLogger
+
+	// Register audit logger cleanup on shutdown
+	if shutdownMgr != nil {
+		shutdownMgr.Register(func(ctx context.Context) error {
+			return auditLogger.Close()
+		})
+	}
+
 	// Get options (if provided)
 	var options *MITMOptions
 	if len(opts) > 0 && opts[0] != nil {
@@ -153,7 +173,7 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(stripHandler(registry, logger))
 
 	// 5. Authentication injection
-	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(authHandler(registry, secretRegistry, authRegistry, logger))
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(authHandler(registry, secretRegistry, authRegistry, auditLogger, logger))
 
 	// 6. HAR recording - request start
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(recordRequestHandler(s.recorder))
@@ -205,13 +225,13 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	// Create certificate store adapter
 	certStore := NewGoproxyCertStore(certCache)
 
-	// CONNECT handler: MITM ALL connections (passthrough but intercepted)
+	// Configure CONNECT handler - MITM ALL connections (no filtering)
 	proxy.OnRequest().HandleConnectFunc(examineConnectHandler(certStore, logger))
 
-	// Request handler: Just log, don't modify
+	// Configure request handler - log ALL requests
 	proxy.OnRequest().DoFunc(examineRequestHandler(examineLogger))
 
-	// Response handler: Log responses if configured
+	// Configure response handler - log ALL responses
 	proxy.OnResponse().DoFunc(examineResponseHandler(examineLogger))
 
 	s.proxy = proxy
@@ -233,93 +253,11 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	return s
 }
 
-// Start starts the proxy server on the configured address and port.
-func (s *Server) Start(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.started {
-		return fmt.Errorf("server already started")
-	}
-
-	// Build listen address
-	addr := fmt.Sprintf("%s:%d", s.config.Server.Address, s.config.Server.Port)
-
-	// Create listener
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to listen on %s: %w", addr, err)
-	}
-
-	s.listener = listener
-	s.started = true
-
-	log.Info(ctx, "proxy server listening",
-		"address", s.config.Server.Address,
-		"port", s.config.Server.Port,
-	)
-
-	// Start serving in a goroutine
-	go func() {
-		if err := s.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Error(ctx, "proxy server error", err)
-		}
-	}()
-
-	return nil
-}
-
-// Stop gracefully stops the proxy server.
-func (s *Server) Stop(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if !s.started {
-		return nil
-	}
-
-	log.Info(ctx, "stopping proxy server")
-
-	// Shutdown the HTTP server with the provided context
-	if err := s.httpServer.Shutdown(ctx); err != nil {
-		// If shutdown times out due to context deadline, force close
-		// This is expected behavior when there are lingering connections
-		if err == context.DeadlineExceeded || err == context.Canceled {
-			log.Info(ctx, "shutdown timeout reached, forcing close")
-			if closeErr := s.httpServer.Close(); closeErr != nil {
-				log.Error(ctx, "error force closing proxy server", closeErr)
-			}
-			// Don't return the timeout error - shutdown was successful
-		} else {
-			log.Error(ctx, "error shutting down proxy server", err)
-			// Force close on other errors
-			if closeErr := s.httpServer.Close(); closeErr != nil {
-				log.Error(ctx, "error force closing proxy server", closeErr)
-			}
-			return err
-		}
-	}
-
-	s.started = false
-	log.Info(ctx, "proxy server stopped")
-
-	return nil
-}
-
-// GetHAR returns the recorded HAR data as JSON bytes
-func (s *Server) GetHAR() ([]byte, error) {
-	if s.recorder == nil {
-		return nil, fmt.Errorf("recorder not initialized")
-	}
-	return s.recorder.ToJSON()
-}
-
-// FindingCallback is called when a new auth finding is detected during init mode.
+// FindingCallback is called when a new finding is discovered in init mode.
 type FindingCallback func(host string, finding *chaperoneInit.Finding)
 
-// NewInitProxy creates a MITM proxy for the init wizard.
-// It analyzes requests to detect authentication patterns and policy constraints.
-// The detector analyzes requests and the callback reports findings in real-time.
+// NewInitProxy creates a passthrough MITM proxy for init mode credential discovery.
+// It analyzes requests to detect authentication patterns and generate config.
 func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, detector *chaperoneInit.Detector, evidence *chaperoneInit.Evidence, onFinding FindingCallback) *Server {
 	if logger == nil {
 		logger = slog.Default()
@@ -341,13 +279,13 @@ func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown
 	// Create certificate store adapter
 	certStore := NewGoproxyCertStore(certCache)
 
-	// CONNECT handler: MITM ALL connections (like examine mode)
+	// Configure CONNECT handler - MITM ALL connections (no filtering)
 	proxy.OnRequest().HandleConnectFunc(initConnectHandler(certStore, logger))
 
-	// Request handler: Analyze for auth patterns, then forward unmodified
+	// Configure request handler - analyze ALL requests
 	proxy.OnRequest().DoFunc(initRequestHandler(detector, evidence, onFinding))
 
-	// Response handler: No-op (passthrough)
+	// Configure response handler - no-op for now
 	proxy.OnResponse().DoFunc(initResponseHandler())
 
 	s.proxy = proxy
@@ -367,4 +305,58 @@ func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown
 	}
 
 	return s
+}
+
+// Start starts the proxy server.
+func (s *Server) Start() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.started {
+		return fmt.Errorf("server already started")
+	}
+
+	addr := fmt.Sprintf("%s:%d", s.config.Server.Address, s.config.Server.Port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to start listener: %w", err)
+	}
+
+	s.listener = listener
+	s.started = true
+
+	s.logger.Info("proxy server started", "address", addr)
+
+	// Start serving in a goroutine
+	go func() {
+		if err := s.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+			s.logger.Error("proxy server error", "error", err)
+		}
+	}()
+
+	return nil
+}
+
+// Stop stops the proxy server gracefully.
+func (s *Server) Stop(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.started {
+		return nil
+	}
+
+	s.logger.Info("stopping proxy server")
+
+	if err := s.httpServer.Shutdown(ctx); err != nil {
+		return fmt.Errorf("failed to shutdown server: %w", err)
+	}
+
+	s.started = false
+	return nil
+}
+
+// GetRecorder returns the HAR recorder (for testing/debugging).
+func (s *Server) GetRecorder() *recorder.Recorder {
+	return s.recorder
 }

@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"sync"
 
+	"github.com/bmf/chaperone/internal/audit"
 	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/examine"
 	chaperoneInit "github.com/bmf/chaperone/internal/init"
@@ -266,7 +268,11 @@ func stripHandler(registry service.ServiceRegistry, logger *slog.Logger) func(*h
 }
 
 // authHandler creates a handler that injects authentication credentials.
-func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Registry, authRegistry *auth.Registry, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Registry, authRegistry *auth.Registry, auditLogger *audit.Logger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	// Track warnings for services without placeholders (warn once per service)
+	warnedServices := make(map[string]bool)
+	var warnMutex sync.Mutex
+
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
@@ -278,6 +284,42 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 		// Skip auth if registries not configured
 		if secretRegistry == nil || authRegistry == nil {
 			return r, nil
+		}
+
+		// PLACEHOLDER CHECK
+		if svc.Placeholder != "" {
+			// Get the current auth header value
+			headerName := "Authorization"
+			if svc.HeaderName != "" {
+				headerName = svc.HeaderName
+			}
+
+			currentValue := r.Header.Get(headerName)
+
+			// For bearer tokens, extract the token part (strip "Bearer " prefix)
+			if strings.HasPrefix(svc.AuthStrategyRef, "bearer") {
+				currentValue = strings.TrimPrefix(currentValue, "Bearer ")
+				currentValue = strings.TrimSpace(currentValue)
+			}
+
+			// Check if placeholder matches
+			if currentValue != svc.Placeholder {
+				// No match - pass through without injection
+				log.Debug(reqCtx, "placeholder mismatch, passing through",
+					"host", r.Host,
+					"expected_prefix", svc.Placeholder[:min(8, len(svc.Placeholder))]+"...")
+				return r, nil
+			}
+		} else {
+			// No placeholder configured - warn once per service (backward compat)
+			warnMutex.Lock()
+			if !warnedServices[svc.Name] {
+				log.Debug(reqCtx, "no placeholder configured, injecting anyway (backward compat)",
+					"service", svc.Name,
+					"host", r.Host)
+				warnedServices[svc.Name] = true
+			}
+			warnMutex.Unlock()
 		}
 
 		// Fetch secret
@@ -307,6 +349,19 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 				"strategy", svc.AuthStrategyRef)
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
 				http.StatusBadGateway, "Authentication failed")
+		}
+
+		// AUDIT LOGGING - after successful injection
+		if auditLogger != nil {
+			auditLogger.Log(audit.Entry{
+				Event:        audit.EventCredentialInjected,
+				Service:      svc.Name,
+				Host:         r.Host,
+				Path:         r.URL.Path,
+				Method:       r.Method,
+				AuthStrategy: svc.AuthStrategyRef,
+				RequestID:    log.RequestID(reqCtx),
+			})
 		}
 
 		// Build log args - include stripped headers if any

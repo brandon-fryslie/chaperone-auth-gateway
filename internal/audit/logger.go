@@ -3,8 +3,90 @@ package audit
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"os"
+	"sync"
 	"time"
 )
+
+// Event types
+const (
+	EventCredentialInjected = "credential_injected"
+)
+
+// Entry represents a single audit log entry for credential injection.
+type Entry struct {
+	Timestamp    time.Time `json:"timestamp"`
+	Event        string    `json:"event"`
+	Service      string    `json:"service"`
+	Host         string    `json:"host"`
+	Path         string    `json:"path"`
+	Method       string    `json:"method"`
+	AuthStrategy string    `json:"auth_strategy"`
+	RequestID    string    `json:"request_id"`
+}
+
+// Logger writes audit events to a configurable output.
+type Logger struct {
+	mu      sync.Mutex
+	writer  io.Writer
+	encoder *json.Encoder
+	enabled bool
+}
+
+// Config for audit logging.
+type Config struct {
+	Enabled bool
+	Path    string // File path or "stdout"
+}
+
+// NewLogger creates an audit logger.
+func NewLogger(cfg Config) (*Logger, error) {
+	if !cfg.Enabled {
+		return &Logger{enabled: false}, nil
+	}
+
+	var writer io.Writer
+	if cfg.Path == "" || cfg.Path == "stdout" {
+		writer = os.Stdout
+	} else {
+		f, err := os.OpenFile(cfg.Path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			return nil, err
+		}
+		writer = f
+	}
+
+	return &Logger{
+		writer:  writer,
+		encoder: json.NewEncoder(writer),
+		enabled: true,
+	}, nil
+}
+
+// Log writes an audit entry.
+func (l *Logger) Log(entry Entry) error {
+	if !l.enabled {
+		return nil
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	entry.Timestamp = time.Now().UTC()
+	return l.encoder.Encode(entry)
+}
+
+// Close closes the underlying writer if it's a file.
+func (l *Logger) Close() error {
+	if closer, ok := l.writer.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+// Legacy types for compatibility (future use)
 
 // RequestLog captures details about a proxied request for auditing.
 type RequestLog struct {

@@ -13,7 +13,7 @@
 - [ ] **Unix socket mode**
   Use Unix socket instead of TCP port. Enables peer credential verification and avoids port conflicts.
 
-- [ ] **Ignore system proxy**
+- [x] **Ignore system proxy**
   Upstream connections bypass HTTP_PROXY/HTTPS_PROXY environment variables. Prevents proxy chain attacks.
 
 - [ ] **Audit logging**

@@ -3,10 +3,12 @@ package service
 
 // Service represents a managed API endpoint configuration.
 type Service struct {
+	Name            string // Service name from config
 	HostPattern     string
 	AuthStrategyRef string
 	HeaderName      string // For "header" auth strategy - the header to set
 	CredentialRef   string
+	Placeholder     string // Token app sends that we replace
 	Policy          *Policy
 }
 

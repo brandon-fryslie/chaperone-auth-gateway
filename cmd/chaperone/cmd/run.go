@@ -147,10 +147,12 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 		// Convert config.ServiceConfig to service.Service
 		svc := &service.Service{
+			Name:            name,
 			HostPattern:     svcCfg.HostPattern,
 			AuthStrategyRef: authStrategyRef,
 			HeaderName:      svcCfg.HeaderName,
 			CredentialRef:   svcCfg.CredentialRef,
+			Placeholder:     svcCfg.Placeholder,
 			Policy: &service.Policy{
 				AllowedMethods: svcCfg.AllowedMethods,
 				AllowedPaths:   svcCfg.AllowedPaths,

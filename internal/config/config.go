@@ -12,6 +12,7 @@ type Config struct {
 	Server   ServerConfig
 	Services map[string]ServiceConfig
 	Logging  LoggingConfig
+	Audit    AuditConfig
 }
 
 // ServerConfig contains HTTP server settings.
@@ -26,6 +27,7 @@ type ServiceConfig struct {
 	AuthStrategy   string   `toml:"auth_strategy"`
 	HeaderName     string   `toml:"header_name"` // For "header" auth strategy
 	CredentialRef  string   `toml:"credential_ref"`
+	Placeholder    string   `toml:"placeholder"` // Token app sends that we replace
 	AllowedMethods []string `toml:"allowed_methods"`
 	AllowedPaths   []string `toml:"allowed_paths"`
 	MaxBodyBytes   int64    `toml:"max_body_bytes"`
@@ -39,6 +41,12 @@ type LoggingConfig struct {
 	Level  string `toml:"level"`
 	Format string `toml:"format"`
 	Output string `toml:"output"`
+}
+
+// AuditConfig contains audit logging settings.
+type AuditConfig struct {
+	Enabled bool   `toml:"enabled"`
+	Path    string `toml:"path"` // File path or "stdout"
 }
 
 // Load reads and parses a TOML configuration file.
