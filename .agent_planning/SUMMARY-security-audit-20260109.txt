@@ -1,0 +1,163 @@
+Agent: project-evaluator
+Timestamp: 2026-01-09 18:56 UTC
+Scope: Security Architecture, Implementation, Documentation, Test Coverage
+Confidence: FRESH
+
+OVERALL ASSESSMENT
+==================
+Security Posture: ADEQUATE
+Completion: 65% (3 of 5 defense layers implemented, 4 planned features incomplete)
+Test Quality: PARTIAL (unit tests good, integration tests for security features MISSING)
+Documentation Accuracy: 95% (very honest about what's implemented)
+
+KEY FINDINGS
+============
+
+STRENGTHS (What Works Well)
+---------------------------
+✅ Placeholder token authentication - Properly implemented, enforces token matching
+✅ Audit logging - Comprehensive, thread-safe, well-tested (10 tests)
+✅ Upstream TLS validation - Go http.Transport handles correctly
+✅ System proxy ignored - proxy.Tr.Proxy = nil in all proxy instances
+✅ Security documentation - SECURITY.md accurately reflects implementation
+✅ Honest threat model - Clear about what IS and ISN'T protected
+✅ Code quality - No obvious bugs, proper error handling
+
+CRITICAL GAPS (Must Fix Before Production)
+-------------------------------------------
+❌ NO INTEGRATION TESTS for security features
+   - No test: Requests WITHOUT placeholder are NOT injected
+   - No test: Requests WITH placeholder ARE injected
+   - No test: Audit logs written for each injection
+   - No test: System proxy actually ignored upstream
+   Impact: Security features could break silently; no verification they work
+
+❌ PLACEHOLDER VALIDATION MISSING
+   - Config allows placeholder = "a" (1 char)
+   - Config allows placeholder = "Bearer" (collides with real token format)
+   - User could accidentally weaken security with bad placeholder config
+   Fix: Add min length (8 chars) and format validation in config.Validate()
+
+❌ BACKWARD COMPAT WARNING IS SILENT
+   - Services without placeholder still get injected (for backward compat)
+   - Warning logged at DEBUG level only
+   - Users upgrading don't see warning unless running in debug mode
+   Fix: Log at WARN level OR fail startup with clear message
+
+MEDIUM ISSUES (Should Fix Soon)
+-------------------------------
+⚠️ Configuration field naming inconsistency
+   - config.go uses "AuthStrategy" field
+   - service.go uses "AuthStrategyRef" field
+   - Works correctly but confusing for maintainers
+   Fix: Rename for consistency
+
+⚠️ Audit logging doesn't track failures
+   - Only logs successful injections (EventCredentialInjected)
+   - Doesn't log rejected injections (placeholder mismatch)
+   - Can't audit why certain requests weren't injected
+   Fix: Add EventCredentialRejected, EventPolicyViolation event types
+
+⚠️ CLAUDE.md conflates two logging systems
+   - Audit logger: credential injection logging (inject mode)
+   - Examine logger: all request/response logging (examine mode)
+   - Documentation doesn't clearly distinguish them
+   Fix: Clarify the two systems in CLAUDE.md
+
+IMPLEMENTATION STATUS
+====================
+
+Defense-in-Depth Layers
+Layer 1: Credential Isolation (single-service)      ✅ IMPLEMENTED
+Layer 2: Placeholder Token Auth                     ✅ IMPLEMENTED (but untested)
+Layer 3: User/Permission Isolation                  🔲 PLANNED
+Layer 4: Network Hardening (ignore proxy, TLS)     ✅ IMPLEMENTED
+Layer 4: Bundled CA certificates                   🔲 PLANNED
+Layer 5: Audit Logging                              ✅ IMPLEMENTED
+Layer 5: Memory Protection (mlock)                  🔲 PLANNED
+
+Test Coverage
+audit/logger.go                                      ✅ 10 tests, comprehensive
+cmd/check.go                                         ✅ 5 tests, adequate
+proxy handlers (auth, security)                     ❌ NO SECURITY TESTS
+placeholder token enforcement                       ❌ NO TEST
+credential stripping                                ❌ NO TEST
+system proxy behavior                               ❌ NO TEST
+
+Alignment: Documentation vs Implementation
+SECURITY.md status claims: 95% accurate (correct about what's done vs planned)
+ROADMAP.md items: 100% up-to-date
+CLAUDE.md descriptions: 95% accurate (minor conflation of logging systems)
+
+ACTIONABLE RECOMMENDATIONS
+==========================
+
+P0 (Before Production): Add Security Feature Integration Tests
+   Effort: 2-3 hours
+   Impact: HIGH - Ensures security features actually work
+   What to add:
+   - TestPlaceholderTokenEnforced() - Verify requests WITHOUT placeholder rejected
+   - TestPlaceholderTokenInjection() - Verify requests WITH placeholder injected
+   - TestAuditLogWritesOnInjection() - Verify audit file contains entries
+   - TestUpstreamIgnoresSystemProxy() - Verify HTTP_PROXY doesn't affect upstream
+
+P1 (Before Production): Fix Placeholder Validation
+   Effort: 30 minutes
+   Impact: MEDIUM - Prevents user misconfiguration
+   What to do:
+   - Add config.Validate() check: placeholder must be >= 8 chars
+   - Add check: placeholder shouldn't be all uppercase (look like token)
+
+P2 (Before Production): Elevate Backward Compat Warning
+   Effort: 15 minutes
+   Impact: MEDIUM - Prevents silent security degradation
+   What to do:
+   - Change line 317 in handlers.go: log.Debug() → log.Warn()
+   - Or: Make placeholder REQUIRED (breaking change, but safer)
+
+P3 (Technical Debt): Fix Field Naming Inconsistency
+   Effort: 30 minutes
+   Impact: LOW - Maintainability
+   What to do:
+   - Rename ServiceConfig.AuthStrategy → AuthStrategyRef
+
+P4 (Documentation): Clarify Logging Systems in CLAUDE.md
+   Effort: 30 minutes
+   Impact: LOW - Reduces confusion
+   What to do:
+   - Add section explaining Audit Logger vs Examine Logger
+   - Document when each is used
+
+SECURITY VERDICT
+================
+Can implementation proceed? YES, with caveats.
+
+Do not ship to production without completing P0, P1, P2.
+These are quick wins (3-4 hours total) that eliminate critical test coverage gaps.
+
+Threat Model Assessment
+- Protects against app exfiltration: ✅ YES
+- Protects against malicious dependencies: ✅ YES
+- Protects against credential in logs: ✅ YES
+- Protects against credential in VCS: ✅ YES
+- Limits blast radius of compromised app: ✅ YES (via rate limiting - not yet implemented)
+- Does NOT protect against root compromise: ✅ Correctly documented
+- Does NOT protect against CA compromise: ✅ Correctly documented
+
+Risk Assessment
+- Critical Risk: NONE (no bypass vulnerabilities)
+- High Risk: Test coverage gap for security features
+- Medium Risk: Configuration weakening (bad placeholder)
+- Low Risk: Naming/documentation issues
+
+Recommendations
+1. Add integration tests for placeholder enforcement and audit logging (P0)
+2. Add placeholder validation to config (P1)
+3. Elevate backward compat warning from DEBUG to WARN (P2)
+4. Update documentation to clarify logging systems
+5. Consider adding rate limiting / quota enforcement in future
+
+Next Steps
+- Run P0, P1, P2 work
+- Re-run security audit to verify
+- Then ready for production/security marketing

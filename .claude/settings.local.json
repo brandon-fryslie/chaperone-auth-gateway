@@ -3,7 +3,8 @@
     "allow": [
       "Skill(do:nothing)",
       "Bash(bd list:*)",
-      "Skill(do:plan)"
+      "Skill(do:plan)",
+      "Bash(go list:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

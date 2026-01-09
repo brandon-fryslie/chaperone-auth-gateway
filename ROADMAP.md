@@ -4,7 +4,7 @@
 
 ### High Priority
 
-- [ ] **Placeholder token authentication**
+- [x] **Placeholder token authentication**
   Require apps to send a placeholder token for credential injection. Prevents accidental injection into random processes.
 
 - [ ] **Dedicated user mode**
@@ -16,7 +16,7 @@
 - [x] **Ignore system proxy**
   Upstream connections bypass HTTP_PROXY/HTTPS_PROXY environment variables. Prevents proxy chain attacks.
 
-- [ ] **Audit logging**
+- [x] **Audit logging**
   Log all credential injections with timestamp, service, and request path (credentials redacted). Provides forensic trail and usage visibility.
 
 ### Medium Priority
