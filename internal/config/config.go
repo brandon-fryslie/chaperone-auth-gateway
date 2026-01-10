@@ -82,6 +82,11 @@ func (c *Config) Validate() error {
 		if svc.HostPattern == "" {
 			return fmt.Errorf("service %q: host_pattern is required", name)
 		}
+
+		// Validate placeholder length (P1: Security requirement)
+		if svc.Placeholder != "" && len(svc.Placeholder) < 8 {
+			return fmt.Errorf("service %q: placeholder must be at least 8 characters for security (got %d)", name, len(svc.Placeholder))
+		}
 	}
 
 	return nil

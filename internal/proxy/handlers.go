@@ -178,12 +178,15 @@ var knownAuthHeaders = []string{
 // credential leakage when applications (like Claude Code) send unintended
 // authentication headers to third-party providers.
 //
+// EXCEPTION: If a service has a placeholder configured and the request contains
+// that exact placeholder, the header is NOT stripped (so authHandler can verify it).
+//
 // WARNING: This is not configurable. If Chaperone is handling auth for a service,
-// it strips ALL known auth headers first, then injects the correct credentials.
+// it strips ALL known auth headers (except placeholders) first, then injects the correct credentials.
 func securityStripAuthHandler(registry service.ServiceRegistry, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		// Only strip for configured services (where we're doing MITM)
-		_, found := registry.Lookup(r.Host)
+		svc, found := registry.Lookup(r.Host)
 		if !found {
 			return r, nil
 		}
@@ -194,8 +197,15 @@ func securityStripAuthHandler(registry service.ServiceRegistry, logger *slog.Log
 			// Find all case variations of this header
 			for actualHeader := range r.Header {
 				if strings.ToLower(actualHeader) == knownHeader {
-					// Capture the value for the warning (redacted)
 					value := r.Header.Get(actualHeader)
+					
+					// SECURITY FIX: Don't strip if this is a placeholder token
+					if svc.Placeholder != "" && headerContainsPlaceholder(value, svc.Placeholder, svc.AuthStrategyRef) {
+						// This header contains the placeholder - keep it for authHandler to verify
+						continue
+					}
+
+					// Capture the value for logging (redacted)
 					redactedValue := redactCredential(value)
 
 					r.Header.Del(actualHeader)
@@ -221,6 +231,20 @@ func securityStripAuthHandler(registry service.ServiceRegistry, logger *slog.Log
 
 		return r, nil
 	}
+}
+
+// headerContainsPlaceholder checks if a header value contains the placeholder token.
+// For bearer auth, it strips the "Bearer " prefix before comparing.
+func headerContainsPlaceholder(headerValue string, placeholder string, authStrategy string) bool {
+	checkValue := headerValue
+	
+	// For bearer tokens, extract the token part (strip "Bearer " prefix)
+	if strings.HasPrefix(authStrategy, "bearer") {
+		checkValue = strings.TrimPrefix(checkValue, "Bearer ")
+		checkValue = strings.TrimSpace(checkValue)
+	}
+	
+	return checkValue == placeholder
 }
 
 // redactCredential returns a redacted version of a credential for logging.
@@ -314,9 +338,10 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 			// No placeholder configured - warn once per service (backward compat)
 			warnMutex.Lock()
 			if !warnedServices[svc.Name] {
-				log.Debug(reqCtx, "no placeholder configured, injecting anyway (backward compat)",
+				log.Warn(reqCtx, "no placeholder configured - credentials will be injected but consider adding a placeholder for security",
 					"service", svc.Name,
-					"host", r.Host)
+					"host", r.Host,
+					"recommendation", "add 'placeholder = \"chap_...\"' to your service config")
 				warnedServices[svc.Name] = true
 			}
 			warnMutex.Unlock()
