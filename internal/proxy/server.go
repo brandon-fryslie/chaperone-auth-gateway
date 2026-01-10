@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -316,16 +317,58 @@ func (s *Server) Start() error {
 		return fmt.Errorf("server already started")
 	}
 
-	addr := fmt.Sprintf("%s:%d", s.config.Server.Address, s.config.Server.Port)
-	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("failed to start listener: %w", err)
+	var listener net.Listener
+	var err error
+
+	// Check if Unix socket mode is configured
+	if s.config.Server.Socket != "" {
+		// Unix socket mode
+		socketPath := s.config.Server.Socket
+
+		// Remove stale socket file if it exists
+		if _, statErr := os.Stat(socketPath); statErr == nil {
+			if removeErr := os.Remove(socketPath); removeErr != nil {
+				return fmt.Errorf("failed to remove stale socket %s: %w", socketPath, removeErr)
+			}
+			s.logger.Debug("removed stale socket file", "path", socketPath)
+		}
+
+		// Create Unix socket listener
+		listener, err = net.Listen("unix", socketPath)
+		if err != nil {
+			return fmt.Errorf("failed to listen on socket %s: %w", socketPath, err)
+		}
+
+		// Set socket file permissions to 0660 (owner/group read-write)
+		if chmodErr := os.Chmod(socketPath, 0660); chmodErr != nil {
+			listener.Close()
+			return fmt.Errorf("failed to set socket permissions: %w", chmodErr)
+		}
+
+		// Register cleanup to remove socket file on shutdown
+		if s.shutdownMgr != nil {
+			s.shutdownMgr.Register(func(ctx context.Context) error {
+				if removeErr := os.Remove(socketPath); removeErr != nil && !os.IsNotExist(removeErr) {
+					s.logger.Warn("failed to remove socket file on shutdown", "error", removeErr, "path", socketPath)
+				}
+				return nil
+			})
+		}
+
+		s.logger.Info("proxy server started", "socket", socketPath)
+	} else {
+		// TCP mode (existing behavior)
+		addr := fmt.Sprintf("%s:%d", s.config.Server.Address, s.config.Server.Port)
+		listener, err = net.Listen("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("failed to start listener: %w", err)
+		}
+
+		s.logger.Info("proxy server started", "address", addr)
 	}
 
 	s.listener = listener
 	s.started = true
-
-	s.logger.Info("proxy server started", "address", addr)
 
 	// Start serving in a goroutine
 	go func() {

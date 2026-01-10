@@ -97,7 +97,15 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		recommendations = append(recommendations,
 			"Run as dedicated 'chaperone' user for credential file isolation")
 	}
-	fmt.Printf("  %sUsing TCP port (Unix socket not yet supported)\n", iconWarn)
+
+	// Check if using Unix socket mode
+	if cfg != nil && cfg.Server.Socket != "" {
+		fmt.Printf("  %s Unix socket: Using socket at %s\n", iconOK, cfg.Server.Socket)
+	} else {
+		fmt.Printf("  %sUsing TCP port (consider Unix socket for better isolation)\n", iconWarn)
+		recommendations = append(recommendations,
+			"Use Unix socket mode for better permission isolation: --socket /path/to/chaperone.sock")
+	}
 	fmt.Println()
 
 	// Layer 4: Network Hardening

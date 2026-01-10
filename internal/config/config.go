@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/BurntSushi/toml"
@@ -19,6 +20,7 @@ type Config struct {
 type ServerConfig struct {
 	Address string `toml:"address"`
 	Port    int    `toml:"port"`
+	Socket  string `toml:"socket"` // Unix socket path (mutually exclusive with Address/Port)
 }
 
 // ServiceConfig defines settings for a managed API service.
@@ -66,9 +68,20 @@ func Load(path string) (*Config, error) {
 
 // Validate checks that the configuration is valid.
 func (c *Config) Validate() error {
-	// Validate port range (1-65535)
-	if c.Server.Port < 1 || c.Server.Port > 65535 {
-		return fmt.Errorf("invalid port %d: must be between 1 and 65535", c.Server.Port)
+	// Validate socket vs port configuration
+	if c.Server.Socket != "" && c.Server.Port != 0 {
+		// Both socket and port specified - socket takes precedence, log warning
+		slog.Warn("both socket and port configured, socket takes precedence",
+			"socket", c.Server.Socket,
+			"port", c.Server.Port,
+		)
+	}
+
+	// Validate port range (1-65535) only if socket is not configured
+	if c.Server.Socket == "" {
+		if c.Server.Port < 1 || c.Server.Port > 65535 {
+			return fmt.Errorf("invalid port %d: must be between 1 and 65535", c.Server.Port)
+		}
 	}
 
 	// Validate log level (lowercase only)
@@ -94,12 +107,14 @@ func (c *Config) Validate() error {
 
 // SetDefaults applies default values to missing fields.
 func (c *Config) SetDefaults() {
-	// Server defaults
-	if c.Server.Address == "" {
-		c.Server.Address = "127.0.0.1"
-	}
-	if c.Server.Port == 0 {
-		c.Server.Port = 4010
+	// Server defaults - only apply if socket is not configured
+	if c.Server.Socket == "" {
+		if c.Server.Address == "" {
+			c.Server.Address = "127.0.0.1"
+		}
+		if c.Server.Port == 0 {
+			c.Server.Port = 4010
+		}
 	}
 
 	// Logging defaults

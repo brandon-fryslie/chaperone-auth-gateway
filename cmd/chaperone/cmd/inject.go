@@ -19,34 +19,42 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var runSocketPath string // CLI flag for Unix socket path
+var (
+	version    = "dev" // Set during build
+	socketPath string  // CLI flag for Unix socket path
+)
 
-// runCmd represents the run command (kept for backward compatibility)
-var runCmd = &cobra.Command{
-	Use:   "run",
-	Short: "Start the chaperone proxy server (deprecated, use 'inject' instead)",
-	Long: `Start the chaperone proxy server with the specified configuration.
+// injectCmd represents the inject command
+var injectCmd = &cobra.Command{
+	Use:   "inject [service]",
+	Short: "Start proxy with credential injection",
+	Long: `Start the chaperone proxy server with credential injection.
 
-The proxy will listen on the configured address and port, and forward requests
-to upstream services with injected authentication credentials.
+When called without arguments, serves all services from config.
+When called with a service name, serves only that specific service.
 
-Note: This command is deprecated. Use 'chaperone inject' instead.
-
-Example:
-  chaperone run
-  chaperone run --socket /tmp/chaperone.sock`,
-	RunE: runServer,
-	Deprecated: "use 'chaperone inject' instead",
+Examples:
+  chaperone inject                    # Serve all services
+  chaperone inject openai             # Serve only the openai service
+  chaperone inject --socket /tmp/chaperone.sock  # Listen on Unix socket`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runInject,
 }
 
 func init() {
-	rootCmd.AddCommand(runCmd)
-	runCmd.Flags().StringVar(&runSocketPath, "socket", "", "Unix socket path to listen on (overrides config file)")
+	rootCmd.AddCommand(injectCmd)
+	injectCmd.Flags().StringVar(&socketPath, "socket", "", "Unix socket path to listen on (overrides config file)")
 }
 
-func runServer(cmd *cobra.Command, args []string) error {
+func runInject(cmd *cobra.Command, args []string) error {
 	// Create context for the application
 	ctx := context.Background()
+
+	// Determine service filter (if provided)
+	var serviceFilter string
+	if len(args) > 0 {
+		serviceFilter = args[0]
+	}
 
 	// Load configuration using shared getConfigPath()
 	configPath, err := getConfigPath()
@@ -60,8 +68,8 @@ func runServer(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply CLI socket flag override (if provided)
-	if runSocketPath != "" {
-		cfg.Server.Socket = runSocketPath
+	if socketPath != "" {
+		cfg.Server.Socket = socketPath
 	}
 
 	// Apply defaults and validate
@@ -87,6 +95,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 			"address", cfg.Server.Address,
 			"port", cfg.Server.Port,
 		)
+	}
+
+	if serviceFilter != "" {
+		log.Info(ctx, "service filter enabled", "service", serviceFilter)
 	}
 
 	// Create shutdown manager
@@ -139,6 +151,11 @@ func runServer(cmd *cobra.Command, args []string) error {
 	headerStrategies := make(map[string]bool) // Track header strategies to register
 	credentialRefs := make([]string, 0)       // Collect credential refs for preloading
 	for name, svcCfg := range cfg.Services {
+		// Apply service filter if specified
+		if serviceFilter != "" && name != serviceFilter {
+			continue
+		}
+
 		// Determine auth strategy reference
 		// Support both documented formats:
 		// 1. Combined format (recommended): auth_strategy = "header:x-api-key"
@@ -198,6 +215,10 @@ func runServer(cmd *cobra.Command, args []string) error {
 			"host_pattern", svcCfg.HostPattern,
 			"auth_strategy", authStrategyRef,
 		)
+	}
+
+	if serviceFilter != "" && serviceCount == 0 {
+		return fmt.Errorf("service %q not found in config", serviceFilter)
 	}
 
 	log.Info(ctx, "MITM enabled for configured services",
@@ -291,4 +312,108 @@ func runServer(cmd *cobra.Command, args []string) error {
 
 	log.Info(ctx, "chaperone stopped")
 	return nil
+}
+
+// setupLogging configures the global logger based on configuration and format flag
+func setupLogging(cfg *config.Config) {
+	log.Setup(log.Config{
+		Level:  cfg.Logging.Level,
+		Format: log.Format(logFormat),
+	})
+}
+
+// validateConfiguration checks that all configured services have valid configuration:
+// - auth strategies exist
+// - secret providers exist (for credential references)
+// - host patterns are valid
+// - policy configuration is valid
+// This is called at startup to catch configuration errors early.
+func validateConfiguration(ctx context.Context, registry service.ServiceRegistry, authRegistry *auth.Registry, secretRegistry *secrets.Registry) error {
+	var validationErrors []string
+
+	for _, svc := range registry.ListAll() {
+		// Validate auth strategy
+		strategyRef := svc.AuthStrategyRef
+		if strategyRef == "" {
+			strategyRef = "bearer" // Default strategy
+		}
+
+		if !authRegistry.Has(strategyRef) {
+			errMsg := fmt.Sprintf("auth strategy %q not registered (host pattern: %s)", strategyRef, svc.HostPattern)
+			validationErrors = append(validationErrors, errMsg)
+			log.Error(ctx, "auth strategy not found",
+				fmt.Errorf("%s", errMsg),
+				"host_pattern", svc.HostPattern,
+			)
+		}
+
+		// Validate secret provider (if credential reference exists)
+		if svc.CredentialRef != "" {
+			provider := parseSecretProvider(svc.CredentialRef)
+			if provider == "" {
+				errMsg := fmt.Sprintf("invalid credential_ref format %q (host pattern: %s)", svc.CredentialRef, svc.HostPattern)
+				validationErrors = append(validationErrors, errMsg)
+				log.Error(ctx, "invalid credential reference format",
+					fmt.Errorf("%s", errMsg),
+					"credential_ref", svc.CredentialRef,
+					"host_pattern", svc.HostPattern,
+				)
+			} else if !secretRegistry.HasProvider(provider) {
+				errMsg := fmt.Sprintf("secret provider %q not found for credential_ref %q (host pattern: %s)", provider, svc.CredentialRef, svc.HostPattern)
+				validationErrors = append(validationErrors, errMsg)
+				log.Error(ctx, "secret provider not found",
+					fmt.Errorf("%s", errMsg),
+					"provider", provider,
+					"credential_ref", svc.CredentialRef,
+					"host_pattern", svc.HostPattern,
+				)
+			}
+		}
+
+		// Validate host pattern (basic check - should be non-empty)
+		if svc.HostPattern == "" {
+			errMsg := "host pattern is empty"
+			validationErrors = append(validationErrors, errMsg)
+			log.Error(ctx, "invalid service configuration",
+				fmt.Errorf("%s", errMsg),
+				"service", svc,
+			)
+		}
+
+		// Validate policy configuration
+		if svc.Policy != nil {
+			if svc.Policy.MaxBodyBytes < 0 {
+				errMsg := fmt.Sprintf("max_body_bytes is negative (host pattern: %s)", svc.HostPattern)
+				validationErrors = append(validationErrors, errMsg)
+				log.Error(ctx, "invalid policy configuration",
+					fmt.Errorf("%s", errMsg),
+					"host_pattern", svc.HostPattern,
+				)
+			}
+		}
+	}
+
+	if len(validationErrors) > 0 {
+		return fmt.Errorf("configuration validation failed: %d error(s): %v", len(validationErrors), validationErrors)
+	}
+
+	log.Info(ctx, "configuration validation passed")
+	return nil
+}
+
+// parseSecretProvider extracts the provider name from a secret reference.
+// Returns empty string if format is invalid.
+// Format: "provider:path"
+func parseSecretProvider(ref string) string {
+	idx := -1
+	for i, r := range ref {
+		if r == ':' {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return "" // Invalid format
+	}
+	return ref[:idx]
 }
