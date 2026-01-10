@@ -10,7 +10,7 @@
 - [ ] **Dedicated user mode**
   Run Chaperone as unprivileged `chaperone` user. Credential files unreadable by normal users.
 
-- [ ] **Unix socket mode**
+- [x] **Unix socket mode**
   Use Unix socket instead of TCP port. Enables peer credential verification and avoids port conflicts.
 
 - [x] **Ignore system proxy**
