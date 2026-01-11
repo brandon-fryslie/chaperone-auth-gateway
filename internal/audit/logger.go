@@ -12,10 +12,16 @@ import (
 
 // Event types
 const (
-	EventCredentialInjected = "credential_injected"
+	EventCredentialInjected  = "credential_injected"
+	EventAuthFailure         = "auth_failure"
+	EventPolicyDenied        = "policy_denied"
+	EventRequestDropped      = "request_dropped"
+	EventAuthHeaderStripped  = "auth_header_stripped"
+	EventPlaceholderMismatch = "placeholder_mismatch"
 )
 
-// Entry represents a single audit log entry for credential injection.
+// Entry represents a single audit log entry for security-relevant events.
+// Fields align with FedRAMP AU-3 requirements: who, what, when, where, outcome.
 type Entry struct {
 	Timestamp    time.Time `json:"timestamp"`
 	Event        string    `json:"event"`
@@ -25,6 +31,13 @@ type Entry struct {
 	Method       string    `json:"method"`
 	AuthStrategy string    `json:"auth_strategy"`
 	RequestID    string    `json:"request_id"`
+
+	// AU-3 compliance fields
+	ClientIP     string `json:"client_ip"`              // WHO: source of request
+	Outcome      string `json:"outcome"`                // OUTCOME: success|failure|blocked|pass_through
+	StatusCode   int    `json:"status_code,omitempty"`  // HTTP status when applicable
+	ErrorMessage string `json:"error,omitempty"`        // Error details on failure
+	Detail       string `json:"detail,omitempty"`       // Event-specific context
 }
 
 // Logger writes audit events to a configurable output.

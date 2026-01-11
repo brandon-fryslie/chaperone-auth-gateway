@@ -10,5 +10,8 @@
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "bigcodegen/mcp-neovim-server"
-  ]
+  ],
+  "enabledPlugins": {
+    "security-guidance@claude-plugins-official": true
+  }
 }

@@ -161,14 +161,14 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(requestIDHandler())
 
 	// 1. Drop handler (block requests matching drop patterns)
-	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(dropHandler(registry, logger))
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(dropHandler(registry, auditLogger, logger))
 
 	// 2. SECURITY: Auto-strip ALL known auth headers (prevents credential leakage)
 	// This is NOT configurable - it's a security measure that always runs
-	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(securityStripAuthHandler(registry, logger))
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(securityStripAuthHandler(registry, auditLogger, logger))
 
 	// 3. Policy enforcement (check methods, paths, body size)
-	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(policyHandler(registry, enforcer, logger))
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(policyHandler(registry, enforcer, auditLogger, logger))
 
 	// 4. User-configurable strip handler (remove additional headers)
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(stripHandler(registry, logger))

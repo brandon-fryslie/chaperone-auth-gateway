@@ -30,6 +30,17 @@ type requestMetadata struct {
 	colorR, colorG, colorB int    // Pre-computed correlation color for this connection
 }
 
+// extractClientIP extracts the client IP from an HTTP request.
+// Handles both IP:port format and bare IP addresses.
+func extractClientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// RemoteAddr might not have port (shouldn't happen in normal flow)
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // connectHandler creates a CONNECT handler that decides whether to MITM or transparently tunnel.
 func connectHandler(registry service.ServiceRegistry, certStore *GoproxyCertStore, logger *slog.Logger) func(string, *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
 	return func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
@@ -78,7 +89,7 @@ func connectHandler(registry service.ServiceRegistry, certStore *GoproxyCertStor
 }
 
 // policyHandler creates a handler that enforces service policies.
-func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer, auditLogger *audit.Logger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
@@ -94,18 +105,69 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 			if strings.Contains(err.Error(), "too large") {
 				statusCode = http.StatusRequestEntityTooLarge
 			}
+
+			// AUDIT: Policy denied event
+			if auditLogger != nil {
+				auditLogger.Log(audit.Entry{
+					Event:      audit.EventPolicyDenied,
+					Service:    svc.Name,
+					Host:       r.Host,
+					Path:       r.URL.Path,
+					Method:     r.Method,
+					RequestID:  log.RequestID(reqCtx),
+					ClientIP:   extractClientIP(r),
+					Outcome:    "blocked",
+					StatusCode: statusCode,
+					Detail:     fmt.Sprintf("method %s not allowed: %v", r.Method, err),
+				})
+			}
+
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText, statusCode, err.Error())
 		}
 
 		// Check path
 		if err := enforcer.CheckPath(r.URL.Path, svc.Policy); err != nil {
 			logger.Warn("policy violation - path not allowed", "error", err, "hostname", r.Host, "path", r.URL.Path)
+
+			// AUDIT: Policy denied event
+			if auditLogger != nil {
+				auditLogger.Log(audit.Entry{
+					Event:      audit.EventPolicyDenied,
+					Service:    svc.Name,
+					Host:       r.Host,
+					Path:       r.URL.Path,
+					Method:     r.Method,
+					RequestID:  log.RequestID(reqCtx),
+					ClientIP:   extractClientIP(r),
+					Outcome:    "blocked",
+					StatusCode: http.StatusForbidden,
+					Detail:     fmt.Sprintf("path %s not allowed: %v", r.URL.Path, err),
+				})
+			}
+
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText, http.StatusForbidden, err.Error())
 		}
 
 		// Check body size
 		if err := enforcer.CheckBodySize(r.ContentLength, svc.Policy); err != nil {
 			logger.Warn("policy violation - body too large", "error", err, "hostname", r.Host)
+
+			// AUDIT: Policy denied event
+			if auditLogger != nil {
+				auditLogger.Log(audit.Entry{
+					Event:      audit.EventPolicyDenied,
+					Service:    svc.Name,
+					Host:       r.Host,
+					Path:       r.URL.Path,
+					Method:     r.Method,
+					RequestID:  log.RequestID(reqCtx),
+					ClientIP:   extractClientIP(r),
+					Outcome:    "blocked",
+					StatusCode: http.StatusRequestEntityTooLarge,
+					Detail:     fmt.Sprintf("body size %d exceeds limit: %v", r.ContentLength, err),
+				})
+			}
+
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText, http.StatusRequestEntityTooLarge, err.Error())
 		}
 
@@ -115,7 +177,7 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 }
 
 // dropHandler creates a handler that blocks requests matching drop patterns.
-func dropHandler(registry service.ServiceRegistry, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func dropHandler(registry service.ServiceRegistry, auditLogger *audit.Logger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
@@ -138,6 +200,23 @@ func dropHandler(registry service.ServiceRegistry, logger *slog.Logger) func(*ht
 					"pattern", pattern,
 					"host", r.Host,
 					"path", r.URL.Path)
+
+				// AUDIT: Request dropped event
+				if auditLogger != nil {
+					auditLogger.Log(audit.Entry{
+						Event:      audit.EventRequestDropped,
+						Service:    svc.Name,
+						Host:       r.Host,
+						Path:       r.URL.Path,
+						Method:     r.Method,
+						RequestID:  log.RequestID(reqCtx),
+						ClientIP:   extractClientIP(r),
+						Outcome:    "blocked",
+						StatusCode: http.StatusForbidden,
+						Detail:     fmt.Sprintf("matched drop pattern: %s", pattern),
+					})
+				}
+
 				return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
 					http.StatusForbidden, "Request blocked by drop policy")
 			}
@@ -183,8 +262,10 @@ var knownAuthHeaders = []string{
 //
 // WARNING: This is not configurable. If Chaperone is handling auth for a service,
 // it strips ALL known auth headers (except placeholders) first, then injects the correct credentials.
-func securityStripAuthHandler(registry service.ServiceRegistry, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func securityStripAuthHandler(registry service.ServiceRegistry, auditLogger *audit.Logger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		reqCtx := r.Context()
+
 		// Only strip for configured services (where we're doing MITM)
 		svc, found := registry.Lookup(r.Host)
 		if !found {
@@ -198,7 +279,7 @@ func securityStripAuthHandler(registry service.ServiceRegistry, logger *slog.Log
 			for actualHeader := range r.Header {
 				if strings.ToLower(actualHeader) == knownHeader {
 					value := r.Header.Get(actualHeader)
-					
+
 					// SECURITY FIX: Don't strip if this is a placeholder token
 					if svc.Placeholder != "" && headerContainsPlaceholder(value, svc.Placeholder, svc.AuthStrategyRef) {
 						// This header contains the placeholder - keep it for authHandler to verify
@@ -227,6 +308,21 @@ func securityStripAuthHandler(registry service.ServiceRegistry, logger *slog.Log
 					strippedHeaders: strippedHeaders,
 				}
 			}
+
+			// AUDIT: Auth header stripped event
+			if auditLogger != nil {
+				auditLogger.Log(audit.Entry{
+					Event:     audit.EventAuthHeaderStripped,
+					Service:   svc.Name,
+					Host:      r.Host,
+					Path:      r.URL.Path,
+					Method:    r.Method,
+					RequestID: log.RequestID(reqCtx),
+					ClientIP:  extractClientIP(r),
+					Outcome:   "success",
+					Detail:    fmt.Sprintf("stripped headers: %s", strings.Join(strippedHeaders, ", ")),
+				})
+			}
 		}
 
 		return r, nil
@@ -237,13 +333,13 @@ func securityStripAuthHandler(registry service.ServiceRegistry, logger *slog.Log
 // For bearer auth, it strips the "Bearer " prefix before comparing.
 func headerContainsPlaceholder(headerValue string, placeholder string, authStrategy string) bool {
 	checkValue := headerValue
-	
+
 	// For bearer tokens, extract the token part (strip "Bearer " prefix)
 	if strings.HasPrefix(authStrategy, "bearer") {
 		checkValue = strings.TrimPrefix(checkValue, "Bearer ")
 		checkValue = strings.TrimSpace(checkValue)
 	}
-	
+
 	return checkValue == placeholder
 }
 
@@ -332,6 +428,22 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 				log.Debug(reqCtx, "placeholder mismatch, passing through",
 					"host", r.Host,
 					"expected_prefix", svc.Placeholder[:min(8, len(svc.Placeholder))]+"...")
+
+				// AUDIT: Placeholder mismatch event
+				if auditLogger != nil {
+					auditLogger.Log(audit.Entry{
+						Event:     audit.EventPlaceholderMismatch,
+						Service:   svc.Name,
+						Host:      r.Host,
+						Path:      r.URL.Path,
+						Method:    r.Method,
+						RequestID: log.RequestID(reqCtx),
+						ClientIP:  extractClientIP(r),
+						Outcome:   "pass_through",
+						Detail:    "placeholder mismatch",
+					})
+				}
+
 				return r, nil
 			}
 		} else {
@@ -353,6 +465,24 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 			log.Error(reqCtx, "failed to fetch secret", err,
 				"service", svc.HostPattern,
 				"ref", svc.CredentialRef)
+
+			// AUDIT: Auth failure event
+			if auditLogger != nil {
+				auditLogger.Log(audit.Entry{
+					Event:        audit.EventAuthFailure,
+					Service:      svc.Name,
+					Host:         r.Host,
+					Path:         r.URL.Path,
+					Method:       r.Method,
+					AuthStrategy: svc.AuthStrategyRef,
+					RequestID:    log.RequestID(reqCtx),
+					ClientIP:     extractClientIP(r),
+					Outcome:      "failure",
+					StatusCode:   http.StatusServiceUnavailable,
+					ErrorMessage: fmt.Sprintf("secret fetch failed: %v", err),
+				})
+			}
+
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
 				http.StatusServiceUnavailable, "Secret unavailable")
 		}
@@ -363,6 +493,24 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 			log.Error(reqCtx, "unknown authentication strategy", err,
 				"service", svc.HostPattern,
 				"strategy", svc.AuthStrategyRef)
+
+			// AUDIT: Auth failure event
+			if auditLogger != nil {
+				auditLogger.Log(audit.Entry{
+					Event:        audit.EventAuthFailure,
+					Service:      svc.Name,
+					Host:         r.Host,
+					Path:         r.URL.Path,
+					Method:       r.Method,
+					AuthStrategy: svc.AuthStrategyRef,
+					RequestID:    log.RequestID(reqCtx),
+					ClientIP:     extractClientIP(r),
+					Outcome:      "failure",
+					StatusCode:   http.StatusBadGateway,
+					ErrorMessage: fmt.Sprintf("unknown auth strategy: %v", err),
+				})
+			}
+
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
 				http.StatusBadGateway, "Authentication configuration error")
 		}
@@ -372,6 +520,24 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 			log.Error(reqCtx, "failed to apply authentication", err,
 				"service", svc.HostPattern,
 				"strategy", svc.AuthStrategyRef)
+
+			// AUDIT: Auth failure event
+			if auditLogger != nil {
+				auditLogger.Log(audit.Entry{
+					Event:        audit.EventAuthFailure,
+					Service:      svc.Name,
+					Host:         r.Host,
+					Path:         r.URL.Path,
+					Method:       r.Method,
+					AuthStrategy: svc.AuthStrategyRef,
+					RequestID:    log.RequestID(reqCtx),
+					ClientIP:     extractClientIP(r),
+					Outcome:      "failure",
+					StatusCode:   http.StatusBadGateway,
+					ErrorMessage: fmt.Sprintf("auth strategy apply failed: %v", err),
+				})
+			}
+
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
 				http.StatusBadGateway, "Authentication failed")
 		}
@@ -386,6 +552,8 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 				Method:       r.Method,
 				AuthStrategy: svc.AuthStrategyRef,
 				RequestID:    log.RequestID(reqCtx),
+				ClientIP:     extractClientIP(r),
+				Outcome:      "success",
 			})
 		}
 

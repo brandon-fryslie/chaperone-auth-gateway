@@ -529,3 +529,178 @@ func TestDisabledLoggerClose(t *testing.T) {
 
 	t.Log("PASS: Close() on disabled logger is safe")
 }
+// TestEntryNewFieldsSerialization verifies new AU-3 fields serialize correctly.
+func TestEntryNewFieldsSerialization(t *testing.T) {
+	var buf bytes.Buffer
+	logger := &Logger{
+		writer:  &buf,
+		encoder: json.NewEncoder(&buf),
+		enabled: true,
+	}
+
+	entry := Entry{
+		Event:        EventPolicyDenied,
+		Service:      "test-service",
+		Host:         "api.example.com",
+		Path:         "/v1/admin",
+		Method:       "DELETE",
+		AuthStrategy: "bearer",
+		RequestID:    "req-123",
+		ClientIP:     "192.168.1.100",
+		Outcome:      "blocked",
+		StatusCode:   403,
+		ErrorMessage: "method not allowed",
+		Detail:       "method DELETE not in allowed_methods",
+	}
+
+	err := logger.Log(entry)
+	if err != nil {
+		t.Fatalf("FAIL: Log() returned error: %v", err)
+	}
+
+	// Parse JSON output
+	var decoded Entry
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("FAIL: Failed to parse JSON output: %v", err)
+	}
+
+	// Verify new fields
+	if decoded.ClientIP != "192.168.1.100" {
+		t.Errorf("FAIL: ClientIP = %q, want %q", decoded.ClientIP, "192.168.1.100")
+	}
+	if decoded.Outcome != "blocked" {
+		t.Errorf("FAIL: Outcome = %q, want %q", decoded.Outcome, "blocked")
+	}
+	if decoded.StatusCode != 403 {
+		t.Errorf("FAIL: StatusCode = %d, want %d", decoded.StatusCode, 403)
+	}
+	if decoded.ErrorMessage != "method not allowed" {
+		t.Errorf("FAIL: ErrorMessage = %q, want %q", decoded.ErrorMessage, "method not allowed")
+	}
+	if decoded.Detail != "method DELETE not in allowed_methods" {
+		t.Errorf("FAIL: Detail = %q, want %q", decoded.Detail, "method DELETE not in allowed_methods")
+	}
+
+	t.Log("PASS: New AU-3 fields serialize correctly")
+}
+
+// TestEntryOmitemptyFields verifies empty optional fields are omitted from JSON.
+func TestEntryOmitemptyFields(t *testing.T) {
+	var buf bytes.Buffer
+	logger := &Logger{
+		writer:  &buf,
+		encoder: json.NewEncoder(&buf),
+		enabled: true,
+	}
+
+	entry := Entry{
+		Event:     EventCredentialInjected,
+		Service:   "test-service",
+		Host:      "api.example.com",
+		Path:      "/v1/chat",
+		Method:    "POST",
+		RequestID: "req-123",
+		ClientIP:  "192.168.1.100",
+		Outcome:   "success",
+		// StatusCode, ErrorMessage, Detail are all zero/empty
+	}
+
+	err := logger.Log(entry)
+	if err != nil {
+		t.Fatalf("FAIL: Log() returned error: %v", err)
+	}
+
+	output := buf.String()
+
+	// Verify optional fields are NOT in output
+	if bytes.Contains([]byte(output), []byte("status_code")) {
+		t.Error("FAIL: status_code should be omitted when zero")
+	}
+	if bytes.Contains([]byte(output), []byte("error")) {
+		t.Error("FAIL: error field should be omitted when empty")
+	}
+	if bytes.Contains([]byte(output), []byte("detail")) {
+		t.Error("FAIL: detail field should be omitted when empty")
+	}
+
+	// Verify required fields ARE in output
+	if !bytes.Contains([]byte(output), []byte("client_ip")) {
+		t.Error("FAIL: client_ip should be present")
+	}
+	if !bytes.Contains([]byte(output), []byte("outcome")) {
+		t.Error("FAIL: outcome should be present")
+	}
+
+	t.Log("PASS: Empty optional fields are omitted correctly")
+}
+
+// TestNewEventTypes verifies new event type constants exist and are usable.
+func TestNewEventTypes(t *testing.T) {
+	events := []string{
+		EventCredentialInjected,
+		EventAuthFailure,
+		EventPolicyDenied,
+		EventRequestDropped,
+		EventAuthHeaderStripped,
+		EventPlaceholderMismatch,
+	}
+
+	expected := []string{
+		"credential_injected",
+		"auth_failure",
+		"policy_denied",
+		"request_dropped",
+		"auth_header_stripped",
+		"placeholder_mismatch",
+	}
+
+	for i, event := range events {
+		if event != expected[i] {
+			t.Errorf("FAIL: Event[%d] = %q, want %q", i, event, expected[i])
+		}
+	}
+
+	t.Log("PASS: All event type constants defined correctly")
+}
+
+// TestBackwardCompatibility verifies entries with only old fields still work.
+func TestBackwardCompatibility(t *testing.T) {
+	var buf bytes.Buffer
+	logger := &Logger{
+		writer:  &buf,
+		encoder: json.NewEncoder(&buf),
+		enabled: true,
+	}
+
+	// Entry with ONLY old fields (no new AU-3 fields)
+	entry := Entry{
+		Event:        EventCredentialInjected,
+		Service:      "test-service",
+		Host:         "api.example.com",
+		Path:         "/v1/chat",
+		Method:       "POST",
+		AuthStrategy: "bearer",
+		RequestID:    "req-123",
+	}
+
+	err := logger.Log(entry)
+	if err != nil {
+		t.Fatalf("FAIL: Log() returned error: %v", err)
+	}
+
+	// Parse JSON output
+	var decoded Entry
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("FAIL: Failed to parse JSON output: %v", err)
+	}
+
+	// Verify old fields
+	if decoded.Event != EventCredentialInjected {
+		t.Errorf("FAIL: Event = %q, want %q", decoded.Event, EventCredentialInjected)
+	}
+	if decoded.Service != "test-service" {
+		t.Errorf("FAIL: Service = %q, want %q", decoded.Service, "test-service")
+	}
+
+	t.Log("PASS: Backward compatibility maintained for entries with only old fields")
+}
