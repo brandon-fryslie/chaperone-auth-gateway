@@ -679,17 +679,16 @@ func TestAuditLogging(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
-		// VERIFY: Audit file either doesn't exist or is empty
+		// VERIFY: Audit file should contain placeholder_mismatch event (FedRAMP AU-3 compliance)
+		// When placeholder doesn't match, we log the pass-through for audit trail
 		auditData, err := os.ReadFile(auditPath)
-		if err == nil {
-			// File exists - check it's empty
-			trimmed := strings.TrimSpace(string(auditData))
-			assert.Empty(t, trimmed, "Audit file should be empty when no injection occurs")
-		} else {
-			// File doesn't exist - that's also valid
-			assert.True(t, os.IsNotExist(err), "Audit file should not exist when no injection occurs")
-		}
+		require.NoError(t, err, "Audit file should exist with placeholder_mismatch event")
 
-		t.Log("PASS: No audit entry when injection skipped")
+		trimmed := strings.TrimSpace(string(auditData))
+		assert.NotEmpty(t, trimmed, "Audit file should contain placeholder_mismatch event")
+		assert.Contains(t, trimmed, `"event":"placeholder_mismatch"`, "Should log placeholder mismatch event")
+		assert.Contains(t, trimmed, `"outcome":"pass_through"`, "Should have pass_through outcome")
+
+		t.Log("PASS: placeholder_mismatch event logged when injection skipped")
 	})
 }
