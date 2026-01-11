@@ -691,4 +691,529 @@ func TestAuditLogging(t *testing.T) {
 
 		t.Log("PASS: placeholder_mismatch event logged when injection skipped")
 	})
+
+	// Test 3: Policy denied - disallowed method
+	t.Run("policy_denied_method", func(t *testing.T) {
+		// Setup: Create upstream server (won't be reached)
+		upstreamHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Error("Request should NOT reach upstream when policy denies method")
+			w.WriteHeader(http.StatusOK)
+		})
+		upstreamServer := httptest.NewTLSServer(upstreamHandler)
+		defer upstreamServer.Close()
+		upstreamURL, _ := url.Parse(upstreamServer.URL)
+		upstreamHost := upstreamURL.Hostname()
+
+		// Setup: Environment variable for secret
+		testSecretEnvVar := "TEST_POLICY_DENIED_METHOD"
+		os.Setenv(testSecretEnvVar, "test-secret")
+		defer os.Unsetenv(testSecretEnvVar)
+
+		// Setup: Generate CA
+		tempDir := t.TempDir()
+		caKeyPath := filepath.Join(tempDir, "ca-key.pem")
+		caCertPath := filepath.Join(tempDir, "ca-cert.pem")
+
+		ca, err := mitm.GenerateCA()
+		require.NoError(t, err)
+		err = mitm.StoreCA(ca, caKeyPath, caCertPath)
+		require.NoError(t, err)
+
+		// Setup: Configure audit logging to temp file
+		auditPath := filepath.Join(tempDir, "audit.log")
+		placeholder := "chap_policy_test_12345"
+		proxyPort := findAvailablePort(t)
+		cfg := &config.Config{
+			Server: config.ServerConfig{
+				Address: "127.0.0.1",
+				Port:    proxyPort,
+			},
+			Services: map[string]config.ServiceConfig{
+				"test-api": {
+					HostPattern:    upstreamHost,
+					AuthStrategy:   "bearer",
+					CredentialRef:  fmt.Sprintf("env:%s", testSecretEnvVar),
+					Placeholder:    placeholder,
+					AllowedMethods: []string{"GET"}, // Only GET allowed - POST will be denied
+					AllowedPaths:   []string{"/*"},
+					MaxBodyBytes:   10 * 1024 * 1024,
+				},
+			},
+			Logging: config.LoggingConfig{
+				Level:  "debug",
+				Format: "json",
+				Output: "stdout",
+			},
+			Audit: config.AuditConfig{
+				Enabled: true,
+				Path:    auditPath,
+			},
+		}
+
+		// Setup: Create service registry
+		registry := service.NewRegistry()
+		for _, svcCfg := range cfg.Services {
+			svc := &service.Service{
+				Name:            "test-api",
+				HostPattern:     svcCfg.HostPattern,
+				AuthStrategyRef: svcCfg.AuthStrategy,
+				CredentialRef:   svcCfg.CredentialRef,
+				Placeholder:     svcCfg.Placeholder,
+				Policy: &service.Policy{
+					AllowedMethods: svcCfg.AllowedMethods,
+					AllowedPaths:   svcCfg.AllowedPaths,
+					MaxBodyBytes:   svcCfg.MaxBodyBytes,
+				},
+			}
+			err := registry.Register(svc)
+			require.NoError(t, err)
+		}
+
+		// Setup: Start proxy server
+		certCache := mitm.NewCertCache(ca, nil)
+		ctx := context.Background()
+		logger := slog.Default()
+		shutdownMgr := shutdown.NewManager(logger)
+
+		secretRegistry, authRegistry := setupAuthRegistries()
+
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+			SecretRegistry: secretRegistry,
+			AuthRegistry:   authRegistry,
+		})
+		err = proxyServer.Start()
+		require.NoError(t, err)
+		defer proxyServer.Stop(ctx)
+
+		// Setup: Create client
+		caCertPEM, err := os.ReadFile(caCertPath)
+		require.NoError(t, err)
+		certPool := x509.NewCertPool()
+		certPool.AppendCertsFromPEM(caCertPEM)
+
+		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		client := &http.Client{
+			Transport: &http.Transport{
+				Proxy:           http.ProxyURL(proxyURL),
+				TLSClientConfig: &tls.Config{RootCAs: certPool},
+			},
+			Timeout: 10 * time.Second,
+		}
+
+		// EXECUTE: Send POST request (disallowed - only GET allowed)
+		req, err := http.NewRequest("POST", upstreamServer.URL+"/api/test", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+placeholder)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// VERIFY: Request was blocked
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+		// VERIFY: Audit file contains policy_denied event
+		auditData, err := os.ReadFile(auditPath)
+		require.NoError(t, err, "Audit file should exist")
+
+		trimmed := strings.TrimSpace(string(auditData))
+		assert.Contains(t, trimmed, `"event":"policy_denied"`, "Should log policy_denied event")
+		assert.Contains(t, trimmed, `"outcome":"blocked"`, "Should have blocked outcome")
+		assert.Contains(t, trimmed, `"method":"POST"`, "Should log the denied method")
+
+		t.Log("PASS: policy_denied event logged for disallowed method")
+	})
+
+	// Test 4: Policy denied - disallowed path
+	t.Run("policy_denied_path", func(t *testing.T) {
+		// Setup: Create upstream server (won't be reached)
+		upstreamHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Error("Request should NOT reach upstream when policy denies path")
+			w.WriteHeader(http.StatusOK)
+		})
+		upstreamServer := httptest.NewTLSServer(upstreamHandler)
+		defer upstreamServer.Close()
+		upstreamURL, _ := url.Parse(upstreamServer.URL)
+		upstreamHost := upstreamURL.Hostname()
+
+		// Setup: Environment variable for secret
+		testSecretEnvVar := "TEST_POLICY_DENIED_PATH"
+		os.Setenv(testSecretEnvVar, "test-secret")
+		defer os.Unsetenv(testSecretEnvVar)
+
+		// Setup: Generate CA
+		tempDir := t.TempDir()
+		caKeyPath := filepath.Join(tempDir, "ca-key.pem")
+		caCertPath := filepath.Join(tempDir, "ca-cert.pem")
+
+		ca, err := mitm.GenerateCA()
+		require.NoError(t, err)
+		err = mitm.StoreCA(ca, caKeyPath, caCertPath)
+		require.NoError(t, err)
+
+		// Setup: Configure audit logging to temp file
+		auditPath := filepath.Join(tempDir, "audit.log")
+		placeholder := "chap_policy_path_test_12345"
+		proxyPort := findAvailablePort(t)
+		cfg := &config.Config{
+			Server: config.ServerConfig{
+				Address: "127.0.0.1",
+				Port:    proxyPort,
+			},
+			Services: map[string]config.ServiceConfig{
+				"test-api": {
+					HostPattern:    upstreamHost,
+					AuthStrategy:   "bearer",
+					CredentialRef:  fmt.Sprintf("env:%s", testSecretEnvVar),
+					Placeholder:    placeholder,
+					AllowedMethods: []string{"GET", "POST"},
+					AllowedPaths:   []string{"/api/*"}, // Only /api/* allowed - /admin/* will be denied
+					MaxBodyBytes:   10 * 1024 * 1024,
+				},
+			},
+			Logging: config.LoggingConfig{
+				Level:  "debug",
+				Format: "json",
+				Output: "stdout",
+			},
+			Audit: config.AuditConfig{
+				Enabled: true,
+				Path:    auditPath,
+			},
+		}
+
+		// Setup: Create service registry
+		registry := service.NewRegistry()
+		for _, svcCfg := range cfg.Services {
+			svc := &service.Service{
+				Name:            "test-api",
+				HostPattern:     svcCfg.HostPattern,
+				AuthStrategyRef: svcCfg.AuthStrategy,
+				CredentialRef:   svcCfg.CredentialRef,
+				Placeholder:     svcCfg.Placeholder,
+				Policy: &service.Policy{
+					AllowedMethods: svcCfg.AllowedMethods,
+					AllowedPaths:   svcCfg.AllowedPaths,
+					MaxBodyBytes:   svcCfg.MaxBodyBytes,
+				},
+			}
+			err := registry.Register(svc)
+			require.NoError(t, err)
+		}
+
+		// Setup: Start proxy server
+		certCache := mitm.NewCertCache(ca, nil)
+		ctx := context.Background()
+		logger := slog.Default()
+		shutdownMgr := shutdown.NewManager(logger)
+
+		secretRegistry, authRegistry := setupAuthRegistries()
+
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+			SecretRegistry: secretRegistry,
+			AuthRegistry:   authRegistry,
+		})
+		err = proxyServer.Start()
+		require.NoError(t, err)
+		defer proxyServer.Stop(ctx)
+
+		// Setup: Create client
+		caCertPEM, err := os.ReadFile(caCertPath)
+		require.NoError(t, err)
+		certPool := x509.NewCertPool()
+		certPool.AppendCertsFromPEM(caCertPEM)
+
+		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		client := &http.Client{
+			Transport: &http.Transport{
+				Proxy:           http.ProxyURL(proxyURL),
+				TLSClientConfig: &tls.Config{RootCAs: certPool},
+			},
+			Timeout: 10 * time.Second,
+		}
+
+		// EXECUTE: Send GET request to /admin/secrets (disallowed path)
+		req, err := http.NewRequest("GET", upstreamServer.URL+"/admin/secrets", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+placeholder)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// VERIFY: Request was blocked
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+		// VERIFY: Audit file contains policy_denied event
+		auditData, err := os.ReadFile(auditPath)
+		require.NoError(t, err, "Audit file should exist")
+
+		trimmed := strings.TrimSpace(string(auditData))
+		assert.Contains(t, trimmed, `"event":"policy_denied"`, "Should log policy_denied event")
+		assert.Contains(t, trimmed, `"outcome":"blocked"`, "Should have blocked outcome")
+		assert.Contains(t, trimmed, `"path":"/admin/secrets"`, "Should log the denied path")
+
+		t.Log("PASS: policy_denied event logged for disallowed path")
+	})
+
+	// Test 5: Auth failure - invalid secret reference
+	t.Run("auth_failure", func(t *testing.T) {
+		// Setup: Create upstream server (won't be reached)
+		upstreamHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Error("Request should NOT reach upstream when auth fails")
+			w.WriteHeader(http.StatusOK)
+		})
+		upstreamServer := httptest.NewTLSServer(upstreamHandler)
+		defer upstreamServer.Close()
+		upstreamURL, _ := url.Parse(upstreamServer.URL)
+		upstreamHost := upstreamURL.Hostname()
+
+		// Setup: Generate CA
+		tempDir := t.TempDir()
+		caKeyPath := filepath.Join(tempDir, "ca-key.pem")
+		caCertPath := filepath.Join(tempDir, "ca-cert.pem")
+
+		ca, err := mitm.GenerateCA()
+		require.NoError(t, err)
+		err = mitm.StoreCA(ca, caKeyPath, caCertPath)
+		require.NoError(t, err)
+
+		// Setup: Configure audit logging to temp file
+		auditPath := filepath.Join(tempDir, "audit.log")
+		placeholder := "chap_auth_failure_test_12345"
+		proxyPort := findAvailablePort(t)
+		cfg := &config.Config{
+			Server: config.ServerConfig{
+				Address: "127.0.0.1",
+				Port:    proxyPort,
+			},
+			Services: map[string]config.ServiceConfig{
+				"test-api": {
+					HostPattern:    upstreamHost,
+					AuthStrategy:   "bearer",
+					CredentialRef:  "env:NONEXISTENT_VAR", // Invalid secret reference
+					Placeholder:    placeholder,
+					AllowedMethods: []string{"GET", "POST"},
+					AllowedPaths:   []string{"/*"},
+					MaxBodyBytes:   10 * 1024 * 1024,
+				},
+			},
+			Logging: config.LoggingConfig{
+				Level:  "debug",
+				Format: "json",
+				Output: "stdout",
+			},
+			Audit: config.AuditConfig{
+				Enabled: true,
+				Path:    auditPath,
+			},
+		}
+
+		// Setup: Create service registry
+		registry := service.NewRegistry()
+		for _, svcCfg := range cfg.Services {
+			svc := &service.Service{
+				Name:            "test-api",
+				HostPattern:     svcCfg.HostPattern,
+				AuthStrategyRef: svcCfg.AuthStrategy,
+				CredentialRef:   svcCfg.CredentialRef,
+				Placeholder:     svcCfg.Placeholder,
+				Policy: &service.Policy{
+					AllowedMethods: svcCfg.AllowedMethods,
+					AllowedPaths:   svcCfg.AllowedPaths,
+					MaxBodyBytes:   svcCfg.MaxBodyBytes,
+				},
+			}
+			err := registry.Register(svc)
+			require.NoError(t, err)
+		}
+
+		// Setup: Start proxy server
+		certCache := mitm.NewCertCache(ca, nil)
+		ctx := context.Background()
+		logger := slog.Default()
+		shutdownMgr := shutdown.NewManager(logger)
+
+		secretRegistry, authRegistry := setupAuthRegistries()
+
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+			SecretRegistry: secretRegistry,
+			AuthRegistry:   authRegistry,
+		})
+		err = proxyServer.Start()
+		require.NoError(t, err)
+		defer proxyServer.Stop(ctx)
+
+		// Setup: Create client
+		caCertPEM, err := os.ReadFile(caCertPath)
+		require.NoError(t, err)
+		certPool := x509.NewCertPool()
+		certPool.AppendCertsFromPEM(caCertPEM)
+
+		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		client := &http.Client{
+			Transport: &http.Transport{
+				Proxy:           http.ProxyURL(proxyURL),
+				TLSClientConfig: &tls.Config{RootCAs: certPool},
+			},
+			Timeout: 10 * time.Second,
+		}
+
+		// EXECUTE: Send request with valid placeholder but invalid secret
+		req, err := http.NewRequest("GET", upstreamServer.URL+"/api/test", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+placeholder)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// VERIFY: Request failed with 503 Service Unavailable
+		assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+
+		// VERIFY: Audit file contains auth_failure event
+		auditData, err := os.ReadFile(auditPath)
+		require.NoError(t, err, "Audit file should exist")
+
+		trimmed := strings.TrimSpace(string(auditData))
+		assert.Contains(t, trimmed, `"event":"auth_failure"`, "Should log auth_failure event")
+		assert.Contains(t, trimmed, `"outcome":"failure"`, "Should have failure outcome")
+		assert.Contains(t, trimmed, `"error"`, "Should include error message")
+
+		t.Log("PASS: auth_failure event logged for invalid secret reference")
+	})
+
+	// Test 6: Request dropped - matches drop pattern
+	t.Run("request_dropped", func(t *testing.T) {
+		// Setup: Create upstream server (won't be reached)
+		upstreamHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Error("Request should NOT reach upstream when dropped")
+			w.WriteHeader(http.StatusOK)
+		})
+		upstreamServer := httptest.NewTLSServer(upstreamHandler)
+		defer upstreamServer.Close()
+		upstreamURL, _ := url.Parse(upstreamServer.URL)
+		upstreamHost := upstreamURL.Hostname()
+
+		// Setup: Environment variable for secret
+		testSecretEnvVar := "TEST_DROP_SECRET"
+		os.Setenv(testSecretEnvVar, "test-secret")
+		defer os.Unsetenv(testSecretEnvVar)
+
+		// Setup: Generate CA
+		tempDir := t.TempDir()
+		caKeyPath := filepath.Join(tempDir, "ca-key.pem")
+		caCertPath := filepath.Join(tempDir, "ca-cert.pem")
+
+		ca, err := mitm.GenerateCA()
+		require.NoError(t, err)
+		err = mitm.StoreCA(ca, caKeyPath, caCertPath)
+		require.NoError(t, err)
+
+		// Setup: Configure audit logging to temp file
+		auditPath := filepath.Join(tempDir, "audit.log")
+		placeholder := "chap_drop_test_12345"
+		proxyPort := findAvailablePort(t)
+		cfg := &config.Config{
+			Server: config.ServerConfig{
+				Address: "127.0.0.1",
+				Port:    proxyPort,
+			},
+			Services: map[string]config.ServiceConfig{
+				"test-api": {
+					HostPattern:    upstreamHost,
+					AuthStrategy:   "bearer",
+					CredentialRef:  fmt.Sprintf("env:%s", testSecretEnvVar),
+					Placeholder:    placeholder,
+					AllowedMethods: []string{"GET", "POST"},
+					AllowedPaths:   []string{"/*"},
+					MaxBodyBytes:   10 * 1024 * 1024,
+					Drop:           []string{fmt.Sprintf("%s/health", upstreamHost)}, // Drop health check paths
+				},
+			},
+			Logging: config.LoggingConfig{
+				Level:  "debug",
+				Format: "json",
+				Output: "stdout",
+			},
+			Audit: config.AuditConfig{
+				Enabled: true,
+				Path:    auditPath,
+			},
+		}
+
+		// Setup: Create service registry
+		registry := service.NewRegistry()
+		for _, svcCfg := range cfg.Services {
+			svc := &service.Service{
+				Name:            "test-api",
+				HostPattern:     svcCfg.HostPattern,
+				AuthStrategyRef: svcCfg.AuthStrategy,
+				CredentialRef:   svcCfg.CredentialRef,
+				Placeholder:     svcCfg.Placeholder,
+				Policy: &service.Policy{
+					AllowedMethods: svcCfg.AllowedMethods,
+					AllowedPaths:   svcCfg.AllowedPaths,
+					MaxBodyBytes:   svcCfg.MaxBodyBytes,
+					Drop:           svcCfg.Drop,
+				},
+			}
+			err := registry.Register(svc)
+			require.NoError(t, err)
+		}
+
+		// Setup: Start proxy server
+		certCache := mitm.NewCertCache(ca, nil)
+		ctx := context.Background()
+		logger := slog.Default()
+		shutdownMgr := shutdown.NewManager(logger)
+
+		secretRegistry, authRegistry := setupAuthRegistries()
+
+		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+			SecretRegistry: secretRegistry,
+			AuthRegistry:   authRegistry,
+		})
+		err = proxyServer.Start()
+		require.NoError(t, err)
+		defer proxyServer.Stop(ctx)
+
+		// Setup: Create client
+		caCertPEM, err := os.ReadFile(caCertPath)
+		require.NoError(t, err)
+		certPool := x509.NewCertPool()
+		certPool.AppendCertsFromPEM(caCertPEM)
+
+		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		client := &http.Client{
+			Transport: &http.Transport{
+				Proxy:           http.ProxyURL(proxyURL),
+				TLSClientConfig: &tls.Config{RootCAs: certPool},
+			},
+			Timeout: 10 * time.Second,
+		}
+
+		// EXECUTE: Send GET request to /health (matches drop pattern)
+		req, err := http.NewRequest("GET", upstreamServer.URL+"/health", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer "+placeholder)
+
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// VERIFY: Request was blocked
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+		// VERIFY: Audit file contains request_dropped event
+		auditData, err := os.ReadFile(auditPath)
+		require.NoError(t, err, "Audit file should exist")
+
+		trimmed := strings.TrimSpace(string(auditData))
+		assert.Contains(t, trimmed, `"event":"request_dropped"`, "Should log request_dropped event")
+		assert.Contains(t, trimmed, `"outcome":"blocked"`, "Should have blocked outcome")
+		assert.Contains(t, trimmed, `"path":"/health"`, "Should log the dropped path")
+
+		t.Log("PASS: request_dropped event logged for matching drop pattern")
+	})
 }
