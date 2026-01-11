@@ -119,6 +119,107 @@ User: you
 
 ---
 
+## Audit Logging (FedRAMP AU-2/AU-3 Compliance)
+
+Chaperone provides comprehensive audit logging for all security-relevant events. Audit logs are written in JSON Lines format for easy parsing and integration with SIEM systems.
+
+### Audit Event Taxonomy
+
+| Event Type | FedRAMP AU-2 Category | Description |
+|------------|----------------------|-------------|
+| `credential_injected` | Account Management | Successful credential injection into request |
+| `auth_failure` | Account Management | Secret fetch failure or authentication strategy error |
+| `policy_denied` | Access Control | Request blocked due to policy violation (method/path/body size) |
+| `request_dropped` | Access Control | Request blocked by drop pattern |
+| `auth_header_stripped` | Account Management | Known auth headers removed for security |
+| `placeholder_mismatch` | Access Control | Placeholder token mismatch - request passed through |
+
+### AU-3 Field Mapping
+
+Chaperone audit entries include the following fields to meet FedRAMP AU-3 requirements:
+
+| AU-3 Requirement | Field(s) | Description |
+|------------------|----------|-------------|
+| **What** (Event type) | `event` | Type of security event |
+| **When** (Date/time) | `timestamp` | ISO 8601 timestamp (UTC) |
+| **Where** (Component) | `service`, `host`, `path` | Service name, target host, request path |
+| **Who** (Source) | `client_ip` | Client IP address |
+| **Outcome** | `outcome`, `status_code` | Success/failure/blocked/pass_through, HTTP status |
+| **Additional context** | `error`, `detail` | Error message, event-specific details |
+
+### Example Audit Logs
+
+**Successful credential injection:**
+```json
+{
+  "timestamp": "2026-01-11T04:30:45.123456Z",
+  "event": "credential_injected",
+  "client_ip": "127.0.0.1",
+  "service": "openai",
+  "host": "api.openai.com",
+  "path": "/v1/chat/completions",
+  "method": "POST",
+  "auth_strategy": "bearer",
+  "request_id": "req_abc123",
+  "outcome": "success"
+}
+```
+
+**Policy denied:**
+```json
+{
+  "timestamp": "2026-01-11T04:30:45.123456Z",
+  "event": "policy_denied",
+  "client_ip": "127.0.0.1",
+  "service": "openai",
+  "host": "api.openai.com",
+  "path": "/v1/admin/delete",
+  "method": "DELETE",
+  "request_id": "req_def456",
+  "outcome": "blocked",
+  "status_code": 403,
+  "detail": "method DELETE not in allowed_methods [GET POST]"
+}
+```
+
+**Auth failure:**
+```json
+{
+  "timestamp": "2026-01-11T04:30:45.123456Z",
+  "event": "auth_failure",
+  "client_ip": "127.0.0.1",
+  "service": "openai",
+  "host": "api.openai.com",
+  "path": "/v1/chat/completions",
+  "method": "POST",
+  "auth_strategy": "bearer",
+  "request_id": "req_ghi789",
+  "outcome": "failure",
+  "status_code": 503,
+  "error": "secret not found: env:MISSING_KEY"
+}
+```
+
+### Configuration
+
+Enable audit logging in `chaperone.toml`:
+
+```toml
+[audit]
+enabled = true
+path = "/var/log/chaperone/audit.log"  # or "stdout"
+```
+
+Or via command-line flag:
+
+```bash
+chaperone inject --audit-log /var/log/chaperone/audit.log
+```
+
+Audit log files are created with `0600` permissions (owner read-write only).
+
+---
+
 ## Security Posture Check
 
 Run `chaperone check` to assess your security configuration:

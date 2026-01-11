@@ -102,6 +102,11 @@ port = 4010
 [logging]
 level = "info"
 
+# Optional: Audit logging for security-relevant events
+[audit]
+enabled = true
+path = "/var/log/chaperone/audit.log"  # or "stdout"
+
 [[services]]
 name = "openai"
 host_pattern = "api.openai.com"
@@ -117,6 +122,47 @@ credential_ref = "env:ANTHROPIC_API_KEY"
 allowed_methods = ["POST"]
 allowed_paths = ["/v1/*"]
 ```
+
+### Audit Logging
+
+Chaperone provides comprehensive audit logging for all security-relevant events. Audit logs are written in JSON Lines format for easy parsing and integration with SIEM systems.
+
+**Configuration:**
+
+```toml
+[audit]
+enabled = true
+path = "/var/log/chaperone/audit.log"  # or "stdout"
+```
+
+**Events logged:**
+- `credential_injected` - Successful credential injection
+- `auth_failure` - Secret fetch or authentication strategy failure
+- `policy_denied` - Request blocked by policy (method/path/body size)
+- `request_dropped` - Request blocked by drop pattern
+- `auth_header_stripped` - Known auth headers removed for security
+- `placeholder_mismatch` - Placeholder token mismatch
+
+**Example audit log entry:**
+
+```json
+{
+  "timestamp": "2026-01-11T04:30:45.123456Z",
+  "event": "credential_injected",
+  "client_ip": "127.0.0.1",
+  "service": "openai",
+  "host": "api.openai.com",
+  "path": "/v1/chat/completions",
+  "method": "POST",
+  "auth_strategy": "bearer",
+  "request_id": "req_abc123",
+  "outcome": "success"
+}
+```
+
+Audit log files are created with `0600` permissions (owner read-write only).
+
+See [SECURITY.md](SECURITY.md#audit-logging-fedramp-au-2au-3-compliance) for complete audit event taxonomy and FedRAMP compliance mapping.
 
 ### Secret Providers
 
