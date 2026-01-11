@@ -4,7 +4,10 @@
       "Skill(do:nothing)",
       "Bash(bd list:*)",
       "Skill(do:plan)",
-      "Bash(go list:*)"
+      "Bash(go list:*)",
+      "Bash(go test:*)",
+      "Bash(go build:*)",
+      "Bash(./chaperone inject:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

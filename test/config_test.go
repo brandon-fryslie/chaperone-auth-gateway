@@ -327,19 +327,35 @@ func testValidateServiceHostPattern(t *testing.T) {
 
 // testDefaultServerAddress verifies:
 // - SetDefaults() sets Server.Address to "127.0.0.1" when empty
+// - SetDefaults() defaults to Unix socket mode (no address set)
+// - SetDefaults() sets Server.Address to 127.0.0.1 when port is explicitly set
 // - SetDefaults() does not override explicitly set Address
 func testDefaultServerAddress(t *testing.T) {
-	// Test default is applied when empty
+	// Test: Default is Unix socket mode (no address/port)
 	cfg := &config.Config{}
 	cfg.SetDefaults()
 
-	if cfg.Server.Address != "127.0.0.1" {
-		t.Errorf("SetDefaults() should set Server.Address to '127.0.0.1', got: %s", cfg.Server.Address)
+	// With Unix socket default, Address is not set
+	if cfg.Server.Socket != "/tmp/chaperone.sock" {
+		t.Errorf("SetDefaults() should default to Unix socket mode, got socket: %s", cfg.Server.Socket)
 	}
 
-	// Test explicit value is not overridden
+	// Test: When port is explicitly set, Address defaults to 127.0.0.1
 	cfg = &config.Config{
 		Server: config.ServerConfig{
+			Port: 4010,
+		},
+	}
+	cfg.SetDefaults()
+
+	if cfg.Server.Address != "127.0.0.1" {
+		t.Errorf("SetDefaults() should set Server.Address to '127.0.0.1' when port is set, got: %s", cfg.Server.Address)
+	}
+
+	// Test: Explicit value is not overridden
+	cfg = &config.Config{
+		Server: config.ServerConfig{
+			Port:    4010,
 			Address: "0.0.0.0",
 		},
 	}
@@ -353,18 +369,22 @@ func testDefaultServerAddress(t *testing.T) {
 }
 
 // testDefaultServerPort verifies:
-// - SetDefaults() sets Server.Port to 4010 when 0
+// - SetDefaults() defaults to Unix socket mode (port remains 0)
 // - SetDefaults() does not override explicitly set Port
 func testDefaultServerPort(t *testing.T) {
-	// Test default is applied when 0
+	// Test: Default is Unix socket mode (port remains 0)
 	cfg := &config.Config{}
 	cfg.SetDefaults()
 
-	if cfg.Server.Port != 4010 {
-		t.Errorf("SetDefaults() should set Server.Port to 4010, got: %d", cfg.Server.Port)
+	// With Unix socket default, Port remains 0
+	if cfg.Server.Port != 0 {
+		t.Errorf("SetDefaults() should leave Server.Port as 0 in socket mode, got: %d", cfg.Server.Port)
+	}
+	if cfg.Server.Socket != "/tmp/chaperone.sock" {
+		t.Errorf("SetDefaults() should default to Unix socket mode, got socket: %s", cfg.Server.Socket)
 	}
 
-	// Test explicit value is not overridden
+	// Test: Explicit value is not overridden
 	cfg = &config.Config{
 		Server: config.ServerConfig{
 			Port: 8080,
@@ -554,29 +574,31 @@ func testCompleteConfigWorkflow(t *testing.T) {
 	// Apply defaults
 	cfg.SetDefaults()
 
-	// Verify defaults were applied
-	if cfg.Server.Address == "" {
-		t.Error("SetDefaults() should have set Server.Address")
-	}
-
-	if cfg.Server.Port == 0 {
-		t.Error("SetDefaults() should have set Server.Port")
+	// Verify defaults were applied (Unix socket mode by default)
+	if cfg.Server.Socket == "" && cfg.Server.Port == 0 {
+		t.Error("SetDefaults() should have set Server.Socket or Server.Port")
 	}
 
 	if cfg.Logging.Level == "" {
 		t.Error("SetDefaults() should have set Logging.Level")
 	}
 
-	// Validate
+	// Validate (skip port validation in socket mode)
 	err = cfg.Validate()
 	if err != nil {
 		t.Errorf("Validate() should pass after SetDefaults(), got error: %v", err)
 	}
 
 	t.Logf("Complete workflow succeeded: Load -> SetDefaults -> Validate")
-	t.Logf("Final config: Server=%s:%d, Logging=%s/%s/%s, Services=%d",
-		cfg.Server.Address, cfg.Server.Port, cfg.Logging.Level,
-		cfg.Logging.Format, cfg.Logging.Output, len(cfg.Services))
+	if cfg.Server.Socket != "" {
+		t.Logf("Final config: Socket=%s, Logging=%s/%s/%s, Services=%d",
+			cfg.Server.Socket, cfg.Logging.Level,
+			cfg.Logging.Format, cfg.Logging.Output, len(cfg.Services))
+	} else {
+		t.Logf("Final config: Server=%s:%d, Logging=%s/%s/%s, Services=%d",
+			cfg.Server.Address, cfg.Server.Port, cfg.Logging.Level,
+			cfg.Logging.Format, cfg.Logging.Output, len(cfg.Services))
+	}
 }
 
 // TestConfigurationIntegrationScenario tests a realistic configuration scenario

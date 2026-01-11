@@ -194,10 +194,10 @@ func TestStripHeadersRemovesHeaders(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		stripHeaders   []string
-		clientHeaders  map[string]string
-		expectedAbsent []string
+		name            string
+		stripHeaders    []string
+		clientHeaders   map[string]string
+		expectedAbsent  []string
 		expectedPresent []string
 	}{
 		{

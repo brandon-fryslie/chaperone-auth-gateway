@@ -94,7 +94,8 @@ func TestCLIHelp(t *testing.T) {
 	output := stdout.String()
 
 	// Verify help output contains expected commands
-	expectedCommands := []string{"init", "run"}
+	// Note: "run" is deprecated, "inject" is the current command
+	expectedCommands := []string{"init", "inject"}
 	for _, cmdName := range expectedCommands {
 		if !strings.Contains(output, cmdName) {
 			t.Errorf("FAIL: help output should mention '%s' command, got: %s", cmdName, output)

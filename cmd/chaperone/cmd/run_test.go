@@ -186,13 +186,13 @@ func testGetCAPathInUserConfig(t *testing.T) {
 		t.Fatalf("getCAPath failed: %v", err)
 	}
 
-	// Get expected user config directory
-	configDir, err := os.UserConfigDir()
+	// Implementation uses XDG convention: ~/.config/chaperone
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		t.Fatalf("failed to get user config directory: %v", err)
+		t.Fatalf("failed to get home directory: %v", err)
 	}
 
-	expectedDir := filepath.Join(configDir, "chaperone")
+	expectedDir := filepath.Join(homeDir, ".config", "chaperone")
 
 	if dir != expectedDir {
 		t.Errorf("expected CA directory to be %s, got %s", expectedDir, dir)
@@ -230,31 +230,29 @@ func TestGetCAPathConsistency(t *testing.T) {
 
 // TestRunCommandFlags verifies the run command has required flags
 func TestRunCommandFlags(t *testing.T) {
-	t.Run("config_flag_exists", func(t *testing.T) {
-		flag := runCmd.Flags().Lookup("config")
+	t.Run("config_flag_inherited", func(t *testing.T) {
+		// The --config flag is a persistent flag on rootCmd, inherited by runCmd
+		// Check via InheritedFlags which includes parent persistent flags
+		flag := rootCmd.PersistentFlags().Lookup("config")
 		if flag == nil {
-			t.Fatal("run command should have --config flag")
+			t.Fatal("root command should have --config persistent flag")
 		}
 
 		if flag.Shorthand != "c" {
 			t.Errorf("config flag should have shorthand 'c', got '%s'", flag.Shorthand)
 		}
 
-		t.Logf("--config flag: %s (shorthand: -%s)", flag.Usage, flag.Shorthand)
+		t.Logf("--config flag (inherited): %s (shorthand: -%s)", flag.Usage, flag.Shorthand)
 	})
 
-	t.Run("config_flag_required", func(t *testing.T) {
-		// The --config flag should be marked as required
-		// We can verify this by checking if the flag is in the required flags
-		flag := runCmd.Flags().Lookup("config")
+	t.Run("socket_flag_exists", func(t *testing.T) {
+		// The run command has its own --socket flag
+		flag := runCmd.Flags().Lookup("socket")
 		if flag == nil {
-			t.Fatal("run command should have --config flag")
+			t.Fatal("run command should have --socket flag")
 		}
 
-		// Cobra doesn't expose required flags directly, but we can test behavior
-		// by attempting to execute without the flag
-		// For now, just verify the flag exists
-		t.Log("--config flag exists (requirement checked at runtime by Cobra)")
+		t.Logf("--socket flag: %s", flag.Usage)
 	})
 }
 

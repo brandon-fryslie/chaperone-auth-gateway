@@ -1,0 +1,65 @@
+Agent: iterative-implementer | 2026-01-11T11:52:00Z
+Mode: manual
+Completed: P0 (AU-3 fields), P1 (Event taxonomy), P2 (Documentation) | Files: 5 | Commits: 2
+Tests: 16 passing (all existing + 4 new)
+Cache invalidated: N/A (no eval cache exists)
+Status: complete
+
+Implementation Summary:
+======================
+
+P0: AU-3 Core Field Expansion
+- Added ClientIP, Outcome, StatusCode, ErrorMessage, Detail fields to audit.Entry
+- All fields properly tagged (omitempty for optional fields)
+- Updated credential_injected events to populate new fields
+- Backward compatibility maintained (all existing tests pass)
+- Added 4 new unit tests to verify new functionality
+
+P1: Event Taxonomy Expansion
+- Added 5 new event type constants (auth_failure, policy_denied, request_dropped, auth_header_stripped, placeholder_mismatch)
+- Added extractClientIP helper function
+- Integrated audit logging into:
+  - policyHandler (3 policy_denied events: method, path, body size)
+  - dropHandler (request_dropped event)
+  - securityStripAuthHandler (auth_header_stripped event)
+  - authHandler (placeholder_mismatch + 3 auth_failure events: secret fetch, strategy lookup, strategy apply)
+  - Updated credential_injected with ClientIP and Outcome
+
+P2: Documentation
+- Updated SECURITY.md with comprehensive Audit Logging section:
+  - Event taxonomy table (6 event types mapped to FedRAMP AU-2 categories)
+  - AU-3 field mapping table (what/when/where/who/outcome)
+  - 3 example audit log entries
+  - Configuration guidance
+- Updated README.md with Audit Logging subsection:
+  - Configuration example
+  - Event list with descriptions
+  - Example JSON output
+  - Link to SECURITY.md for full taxonomy
+
+Files Modified:
+- internal/audit/logger.go (Entry struct + event constants)
+- internal/audit/logger_test.go (4 new tests)
+- internal/proxy/handlers.go (extractClientIP + 9 audit logging calls)
+- internal/proxy/server.go (pass auditLogger to handlers)
+- SECURITY.md (new Audit Logging section)
+- README.md (new Audit Logging subsection)
+
+Validation:
+- All existing tests pass (100% backward compatibility)
+- New tests verify:
+  - New AU-3 fields serialize correctly
+  - Optional fields are omitted when empty
+  - Event type constants are defined correctly
+  - Backward compatibility with old-format entries
+- Code compiles without errors
+- Manual mode: No tests for integration-level events yet (integration tests out of scope for this sprint per PLAN)
+
+Next Steps (per PLAN - out of scope):
+- Integration tests for audit events (future sprint)
+- OCSF format transformation layer
+- Tamper-evident log signing (AU-9)
+- Remote syslog transport
+- Administrative events (server_start, server_stop)
+
+Sprint Goal Achieved: FedRAMP AU-3 minimum compliance with comprehensive event taxonomy

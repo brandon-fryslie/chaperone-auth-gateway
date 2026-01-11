@@ -11,26 +11,26 @@ import (
 
 // HAREntry represents a single HTTP request/response pair in HAR format
 type HAREntry struct {
-	StartedDateTime string        `json:"startedDateTime"`
-	Time            int           `json:"time"`
-	Request         HARRequest    `json:"request"`
-	Response        HARResponse   `json:"response"`
-	Cache           HARCache      `json:"cache"`
-	Timings         HARTimings    `json:"timings"`
-	Comment         string        `json:"comment,omitempty"`
+	StartedDateTime string      `json:"startedDateTime"`
+	Time            int         `json:"time"`
+	Request         HARRequest  `json:"request"`
+	Response        HARResponse `json:"response"`
+	Cache           HARCache    `json:"cache"`
+	Timings         HARTimings  `json:"timings"`
+	Comment         string      `json:"comment,omitempty"`
 }
 
 // HARRequest represents an HTTP request in HAR format
 type HARRequest struct {
-	Method      string              `json:"method"`
-	URL         string              `json:"url"`
-	HTTPVersion string              `json:"httpVersion"`
-	Cookies     []HARCookie         `json:"cookies"`
-	Headers     []HARHeader         `json:"headers"`
-	QueryString []HARQueryString    `json:"queryString"`
-	PostData    *HARPostData        `json:"postData,omitempty"`
-	HeadersSize int                `json:"headersSize"`
-	BodySize    int                `json:"bodySize"`
+	Method      string           `json:"method"`
+	URL         string           `json:"url"`
+	HTTPVersion string           `json:"httpVersion"`
+	Cookies     []HARCookie      `json:"cookies"`
+	Headers     []HARHeader      `json:"headers"`
+	QueryString []HARQueryString `json:"queryString"`
+	PostData    *HARPostData     `json:"postData,omitempty"`
+	HeadersSize int              `json:"headersSize"`
+	BodySize    int              `json:"bodySize"`
 }
 
 // HARResponse represents an HTTP response in HAR format
@@ -48,18 +48,18 @@ type HARResponse struct {
 
 // HARContent represents response content in HAR format
 type HARContent struct {
-	Size        int    `json:"size"`
-	MIMEType    string `json:"mimeType"`
-	Text        string `json:"text,omitempty"`
-	Encoding    string `json:"encoding,omitempty"`
-	Comment     string `json:"comment,omitempty"`
+	Size     int    `json:"size"`
+	MIMEType string `json:"mimeType"`
+	Text     string `json:"text,omitempty"`
+	Encoding string `json:"encoding,omitempty"`
+	Comment  string `json:"comment,omitempty"`
 }
 
 // HARHeader represents an HTTP header in HAR format
 type HARHeader struct {
-	Name     string `json:"name"`
-	Value    string `json:"value"`
-	Comment  string `json:"comment,omitempty"`
+	Name    string `json:"name"`
+	Value   string `json:"value"`
+	Comment string `json:"comment,omitempty"`
 }
 
 // HARCookie represents an HTTP cookie in HAR format
@@ -83,10 +83,10 @@ type HARQueryString struct {
 
 // HARPostData represents POST data in HAR format
 type HARPostData struct {
-	MIMEType string              `json:"mimeType"`
-	Text     string              `json:"text"`
-	Params   []HARPostDataParam  `json:"params,omitempty"`
-	Comment  string              `json:"comment,omitempty"`
+	MIMEType string             `json:"mimeType"`
+	Text     string             `json:"text"`
+	Params   []HARPostDataParam `json:"params,omitempty"`
+	Comment  string             `json:"comment,omitempty"`
 }
 
 // HARPostDataParam represents a POST data parameter in HAR format
@@ -116,12 +116,12 @@ type HARTimings struct {
 
 // HAR represents a complete HAR archive
 type HAR struct {
-	Version string      `json:"version"`
-	Creator HARCreator  `json:"creator"`
-	Browser HARBrowser  `json:"browser,omitempty"`
-	Pages   []HARPage   `json:"pages,omitempty"`
-	Entries []HAREntry  `json:"entries"`
-	Comment string      `json:"comment,omitempty"`
+	Version string     `json:"version"`
+	Creator HARCreator `json:"creator"`
+	Browser HARBrowser `json:"browser,omitempty"`
+	Pages   []HARPage  `json:"pages,omitempty"`
+	Entries []HAREntry `json:"entries"`
+	Comment string     `json:"comment,omitempty"`
 }
 
 // HARCreator represents the creator of the HAR file

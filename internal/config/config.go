@@ -107,13 +107,17 @@ func (c *Config) Validate() error {
 
 // SetDefaults applies default values to missing fields.
 func (c *Config) SetDefaults() {
-	// Server defaults - only apply if socket is not configured
-	if c.Server.Socket == "" {
+	// Server defaults
+	// Default to Unix socket mode if neither socket nor port is configured
+	if c.Server.Socket == "" && c.Server.Port == 0 {
+		// Default: Unix socket mode for better security
+		c.Server.Socket = "/tmp/chaperone.sock"
+	}
+
+	// If port is explicitly set but socket is not, use TCP mode
+	if c.Server.Port != 0 && c.Server.Socket == "" {
 		if c.Server.Address == "" {
 			c.Server.Address = "127.0.0.1"
-		}
-		if c.Server.Port == 0 {
-			c.Server.Port = 4010
 		}
 	}
 

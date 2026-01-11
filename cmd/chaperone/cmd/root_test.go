@@ -179,9 +179,17 @@ func TestRootCommandProperties(t *testing.T) {
 		}
 	})
 
-	t.Run("completion_disabled", func(t *testing.T) {
-		if !rootCmd.CompletionOptions.DisableDefaultCmd {
-			t.Error("Default completion command should be disabled")
+	t.Run("completion_enabled", func(t *testing.T) {
+		// Verify completion command is available (InitDefaultCompletionCmd was called)
+		hasCompletion := false
+		for _, cmd := range rootCmd.Commands() {
+			if cmd.Name() == "completion" {
+				hasCompletion = true
+				break
+			}
+		}
+		if !hasCompletion {
+			t.Error("Completion command should be registered")
 		}
 	})
 }

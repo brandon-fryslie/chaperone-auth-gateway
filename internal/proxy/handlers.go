@@ -7,8 +7,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/bmf/chaperone/internal/audit"
 	"github.com/bmf/chaperone/internal/auth"

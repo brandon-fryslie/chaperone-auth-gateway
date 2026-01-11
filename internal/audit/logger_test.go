@@ -529,6 +529,7 @@ func TestDisabledLoggerClose(t *testing.T) {
 
 	t.Log("PASS: Close() on disabled logger is safe")
 }
+
 // TestEntryNewFieldsSerialization verifies new AU-3 fields serialize correctly.
 func TestEntryNewFieldsSerialization(t *testing.T) {
 	var buf bytes.Buffer

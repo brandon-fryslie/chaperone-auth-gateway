@@ -20,8 +20,11 @@ import (
 )
 
 var (
-	version    = "dev" // Set during build
-	socketPath string  // CLI flag for Unix socket path
+	version    = "0.1.0" // Set during build via ldflags
+	socketPath string    // CLI flag for Unix socket path
+	httpMode   bool      // CLI flag to force HTTP/TCP mode
+	httpPort   int       // CLI flag for HTTP port (implies HTTP mode)
+	httpAddr   string    // CLI flag for HTTP address (implies HTTP mode)
 )
 
 // injectCmd represents the inject command
@@ -33,17 +36,25 @@ var injectCmd = &cobra.Command{
 When called without arguments, serves all services from config.
 When called with a service name, serves only that specific service.
 
+By default, Chaperone listens on a Unix socket (/tmp/chaperone.sock) for better security.
+Use --http flag to enable TCP mode instead.
+
 Examples:
-  chaperone inject                    # Serve all services
+  chaperone inject                    # Serve all services (Unix socket mode)
   chaperone inject openai             # Serve only the openai service
-  chaperone inject --socket /tmp/chaperone.sock  # Listen on Unix socket`,
+  chaperone inject --socket /run/chaperone/proxy.sock  # Custom socket path
+  chaperone inject --http             # Use TCP mode (127.0.0.1:4010)
+  chaperone inject --http --port 8080 # Use TCP mode on custom port`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runInject,
 }
 
 func init() {
 	rootCmd.AddCommand(injectCmd)
-	injectCmd.Flags().StringVar(&socketPath, "socket", "", "Unix socket path to listen on (overrides config file)")
+	injectCmd.Flags().StringVar(&socketPath, "socket", "", "Unix socket path to listen on (overrides default /tmp/chaperone.sock)")
+	injectCmd.Flags().BoolVar(&httpMode, "http", false, "Use HTTP/TCP mode instead of Unix socket")
+	injectCmd.Flags().IntVar(&httpPort, "port", 0, "Port to listen on (implies --http, default 4010)")
+	injectCmd.Flags().StringVar(&httpAddr, "addr", "", "Address to listen on (implies --http, default 127.0.0.1)")
 }
 
 func runInject(cmd *cobra.Command, args []string) error {
@@ -67,10 +78,30 @@ func runInject(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Apply CLI socket flag override (if provided)
+	// Apply CLI flags for transport mode
+	// Priority: --socket > --http/--port/--addr > config file > default (Unix socket)
+
 	if socketPath != "" {
+		// Explicit socket path provided
 		cfg.Server.Socket = socketPath
+		cfg.Server.Port = 0 // Clear port to avoid validation warning
+	} else if httpMode || httpPort != 0 || httpAddr != "" {
+		// HTTP mode requested via flags
+		cfg.Server.Socket = "" // Disable socket mode
+
+		if httpPort != 0 {
+			cfg.Server.Port = httpPort
+		} else if cfg.Server.Port == 0 {
+			cfg.Server.Port = 4010 // Default HTTP port
+		}
+
+		if httpAddr != "" {
+			cfg.Server.Address = httpAddr
+		} else if cfg.Server.Address == "" {
+			cfg.Server.Address = "127.0.0.1" // Default HTTP address
+		}
 	}
+	// else: use config file settings, or SetDefaults will apply Unix socket mode
 
 	// Apply defaults and validate
 	cfg.SetDefaults()

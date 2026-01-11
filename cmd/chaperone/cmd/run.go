@@ -19,7 +19,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var runSocketPath string // CLI flag for Unix socket path
+var (
+	runSocketPath string // CLI flag for Unix socket path
+	runHttpMode   bool   // CLI flag to force HTTP/TCP mode
+	runHttpPort   int    // CLI flag for HTTP port
+	runHttpAddr   string // CLI flag for HTTP address
+)
 
 // runCmd represents the run command (kept for backward compatibility)
 var runCmd = &cobra.Command{
@@ -32,16 +37,22 @@ to upstream services with injected authentication credentials.
 
 Note: This command is deprecated. Use 'chaperone inject' instead.
 
+By default, Chaperone listens on a Unix socket (/tmp/chaperone.sock) for better security.
+
 Example:
   chaperone run
-  chaperone run --socket /tmp/chaperone.sock`,
-	RunE: runServer,
+  chaperone run --socket /tmp/chaperone.sock
+  chaperone run --http`,
+	RunE:       runServer,
 	Deprecated: "use 'chaperone inject' instead",
 }
 
 func init() {
 	rootCmd.AddCommand(runCmd)
-	runCmd.Flags().StringVar(&runSocketPath, "socket", "", "Unix socket path to listen on (overrides config file)")
+	runCmd.Flags().StringVar(&runSocketPath, "socket", "", "Unix socket path to listen on (overrides default /tmp/chaperone.sock)")
+	runCmd.Flags().BoolVar(&runHttpMode, "http", false, "Use HTTP/TCP mode instead of Unix socket")
+	runCmd.Flags().IntVar(&runHttpPort, "port", 0, "Port to listen on (implies --http, default 4010)")
+	runCmd.Flags().StringVar(&runHttpAddr, "addr", "", "Address to listen on (implies --http, default 127.0.0.1)")
 }
 
 func runServer(cmd *cobra.Command, args []string) error {
@@ -59,16 +70,30 @@ func runServer(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Apply CLI socket flag override (if provided)
-	if runSocketPath != "" {
-		cfg.Server.Socket = runSocketPath
-	}
+	// Apply CLI flags for transport mode
+	// Priority: --socket > --http/--port/--addr > config file > default (Unix socket)
 
-	// Apply defaults and validate
-	cfg.SetDefaults()
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("invalid config: %w", err)
+	if runSocketPath != "" {
+		// Explicit socket path provided
+		cfg.Server.Socket = runSocketPath
+		cfg.Server.Port = 0 // Clear port to avoid validation warning
+	} else if runHttpMode || runHttpPort != 0 || runHttpAddr != "" {
+		// HTTP mode requested via flags
+		cfg.Server.Socket = "" // Disable socket mode
+
+		if runHttpPort != 0 {
+			cfg.Server.Port = runHttpPort
+		} else if cfg.Server.Port == 0 {
+			cfg.Server.Port = 4010 // Default HTTP port
+		}
+
+		if runHttpAddr != "" {
+			cfg.Server.Address = runHttpAddr
+		} else if cfg.Server.Address == "" {
+			cfg.Server.Address = "127.0.0.1" // Default HTTP address
+		}
 	}
+	// else: use config file settings, or SetDefaults will apply Unix socket mode
 
 	// Set up logging based on config
 	setupLogging(cfg)

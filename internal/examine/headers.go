@@ -42,7 +42,7 @@ var noAuthHeaderPatterns = []string{
 	"trailer",
 
 	// Request context
-	"host",    // Already shown in URL
+	"host", // Already shown in URL
 	"referer",
 	"origin",
 	"from",

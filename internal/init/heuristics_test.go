@@ -257,20 +257,20 @@ func TestCheckValuePattern(t *testing.T) {
 
 func TestDetectAuth(t *testing.T) {
 	tests := []struct {
-		name            string
-		headers         map[string][]string
-		config          DetectorConfig
-		wantFindings    int
+		name              string
+		headers           map[string][]string
+		config            DetectorConfig
+		wantFindings      int
 		wantTopConfidence float64
 	}{
 		{
 			name: "sentinel takes precedence",
 			headers: map[string][]string{
-				"Authorization":  {"Bearer token123"},
-				"X-Custom-Key":   {"sentinel-value-xyz"},
+				"Authorization": {"Bearer token123"},
+				"X-Custom-Key":  {"sentinel-value-xyz"},
 			},
-			config: DetectorConfig{SentinelValue: "sentinel-value-xyz"},
-			wantFindings: 2,
+			config:            DetectorConfig{SentinelValue: "sentinel-value-xyz"},
+			wantFindings:      2,
 			wantTopConfidence: 1.0, // Sentinel
 		},
 		{
@@ -279,8 +279,8 @@ func TestDetectAuth(t *testing.T) {
 				"Authorization": {"Bearer token123"},
 				"Content-Type":  {"application/json"},
 			},
-			config: DetectorConfig{},
-			wantFindings: 1,
+			config:            DetectorConfig{},
+			wantFindings:      1,
 			wantTopConfidence: 0.9, // Known header
 		},
 		{
@@ -289,8 +289,8 @@ func TestDetectAuth(t *testing.T) {
 				"X-Session-Token": {"abc123"},
 				"Content-Type":    {"application/json"},
 			},
-			config: DetectorConfig{},
-			wantFindings: 1, // Known header "token" (has higher confidence, so continue prevents keyword match)
+			config:            DetectorConfig{},
+			wantFindings:      1,   // Known header "token" (has higher confidence, so continue prevents keyword match)
 			wantTopConfidence: 0.9, // Known header "token"
 		},
 		{
@@ -298,8 +298,8 @@ func TestDetectAuth(t *testing.T) {
 			headers: map[string][]string{
 				"X-Custom": {"sk-abc123def456"},
 			},
-			config: DetectorConfig{},
-			wantFindings: 1,
+			config:            DetectorConfig{},
+			wantFindings:      1,
 			wantTopConfidence: 0.6, // Value pattern
 		},
 		{
@@ -308,8 +308,8 @@ func TestDetectAuth(t *testing.T) {
 				"Content-Type": {"application/json"},
 				"Accept":       {"*/*"},
 			},
-			config: DetectorConfig{},
-			wantFindings: 0,
+			config:            DetectorConfig{},
+			wantFindings:      0,
 			wantTopConfidence: 0,
 		},
 	}

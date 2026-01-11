@@ -72,7 +72,7 @@ func TestCheckPlaceholders_MissingPlaceholders(t *testing.T) {
 				CredentialRef: "env:ANTHROPIC_API_KEY",
 			},
 			"github": {
-				HostPattern:   "api.github.com",
+				HostPattern: "api.github.com",
 				// Placeholder not set
 				AuthStrategy:  "bearer",
 				CredentialRef: "env:GITHUB_TOKEN",

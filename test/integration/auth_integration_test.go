@@ -160,8 +160,6 @@ func TestBearerTokenAuthenticationEndToEnd(t *testing.T) {
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
-
-		
 	})
 	err = proxyServer.Start()
 	require.NoError(t, err)
@@ -314,8 +312,6 @@ func TestCustomHeaderAuthenticationEndToEnd(t *testing.T) {
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
-
-		
 	})
 	err = proxyServer.Start()
 	require.NoError(t, err)
@@ -453,8 +449,6 @@ func TestSecretFetchFailureReturns503(t *testing.T) {
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
-
-		
 	})
 	err = proxyServer.Start()
 	require.NoError(t, err)
@@ -582,8 +576,6 @@ func TestUnknownStrategyReturns502(t *testing.T) {
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
-
-		
 	})
 	err = proxyServer.Start()
 	require.NoError(t, err)
@@ -725,8 +717,6 @@ func TestConcurrentAuthenticatedRequests(t *testing.T) {
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
-
-		
 	})
 	err = proxyServer.Start()
 	require.NoError(t, err)
@@ -892,8 +882,6 @@ func TestAuthStrategyPreservesClientHeaders(t *testing.T) {
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
-
-		
 	})
 	err = proxyServer.Start()
 	require.NoError(t, err)
@@ -1049,8 +1037,6 @@ func TestStrategyRegistryLookup(t *testing.T) {
 			SecretRegistry: secretRegistry,
 
 			AuthRegistry: authRegistry,
-
-			
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -1169,8 +1155,6 @@ func TestStrategyRegistryLookup(t *testing.T) {
 			SecretRegistry: secretRegistry,
 
 			AuthRegistry: authRegistry,
-
-			
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -1308,8 +1292,6 @@ func TestAuthPreservesRequestBody(t *testing.T) {
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
-
-		
 	})
 	err = proxyServer.Start()
 	require.NoError(t, err)

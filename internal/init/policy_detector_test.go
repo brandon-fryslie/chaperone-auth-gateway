@@ -105,8 +105,8 @@ func TestInferMaxBodyBytes(t *testing.T) {
 		{
 			name:        "large body (2MB)",
 			observedMax: 2097152,
-			wantMin:     2516582,  // 2.4MB (2MB * 1.2)
-			wantMax:     3145728,  // Rounded up to 3MB
+			wantMin:     2516582, // 2.4MB (2MB * 1.2)
+			wantMax:     3145728, // Rounded up to 3MB
 		},
 	}
 

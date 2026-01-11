@@ -45,7 +45,7 @@ func TestFindHeaderVariants(t *testing.T) {
 			headers: map[string][]string{
 				"Authorization": {"Bearer token"},
 			},
-			targetName: "authorization", // Target is lowercase
+			targetName: "authorization",           // Target is lowercase
 			want:       []string{"Authorization"}, // But we still find the canonical form
 		},
 		{
@@ -89,13 +89,13 @@ func TestSetHeaderPreservingCapitalization(t *testing.T) {
 	// a header (even with different capitalization) and warning about it.
 
 	tests := []struct {
-		name           string
+		name            string
 		existingHeaders map[string][]string
-		targetName     string
-		value          string
-		wantReplaced   bool
-		wantHeaderName string // The header name that should be present after the operation
-		wantValue      string
+		targetName      string
+		value           string
+		wantReplaced    bool
+		wantHeaderName  string // The header name that should be present after the operation
+		wantValue       string
 	}{
 		{
 			name:            "no existing header - sets with target capitalization",

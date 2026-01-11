@@ -232,7 +232,7 @@ func (h *TextHandler) formatExamineResponse(b *strings.Builder, attrs map[string
 	}
 }
 
-// formatInjectRequest: [req:a3f2] /v1/chat @ api.openai.com (bearer) [stripped: Authorization] 
+// formatInjectRequest: [req:a3f2] /v1/chat @ api.openai.com (bearer) [stripped: Authorization]
 func (h *TextHandler) formatInjectRequest(b *strings.Builder, attrs map[string]any) {
 	strategy := getString(attrs, "auth_strategy")
 	host := getString(attrs, "host")
