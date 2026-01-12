@@ -80,10 +80,10 @@ func TestEnvBuilder_SetProxyVars(t *testing.T) {
 	}
 
 	expectedVars := map[string]string{
-		"HTTP_PROXY":         "http+unix:///tmp/test.sock",
-		"HTTPS_PROXY":        "http+unix:///tmp/test.sock",
-		"CHAPERONE_SOCKET":   "/tmp/test.sock",
-		"CHAPERONE_SERVICE":  "myservice",
+		"HTTP_PROXY":        "http+unix:///tmp/test.sock",
+		"HTTPS_PROXY":       "http+unix:///tmp/test.sock",
+		"CHAPERONE_SOCKET":  "/tmp/test.sock",
+		"CHAPERONE_SERVICE": "myservice",
 	}
 
 	for key, want := range expectedVars {

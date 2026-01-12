@@ -200,21 +200,21 @@ func TestExpandRunConfig(t *testing.T) {
 				input = &copy
 			}
 
-			err := expandRunConfig(input)
+			err := ExpandRunConfig(input)
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("expandRunConfig() expected error, got nil")
+					t.Errorf("ExpandRunConfig() expected error, got nil")
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("expandRunConfig() unexpected error: %v", err)
+				t.Errorf("ExpandRunConfig() unexpected error: %v", err)
 				return
 			}
 
 			if tt.want == nil {
 				if input != nil {
-					t.Errorf("expandRunConfig() expected nil, got %+v", input)
+					t.Errorf("ExpandRunConfig() expected nil, got %+v", input)
 				}
 				return
 			}

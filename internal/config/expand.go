@@ -73,8 +73,9 @@ func isAlphaNumericUnderscore(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
 
-// expandRunConfig expands all variables in a RunConfig.
-func expandRunConfig(rc *RunConfig) error {
+// ExpandRunConfig expands all variables in a RunConfig.
+// Exported for use by cmd package.
+func ExpandRunConfig(rc *RunConfig) error {
 	if rc == nil {
 		return nil
 	}

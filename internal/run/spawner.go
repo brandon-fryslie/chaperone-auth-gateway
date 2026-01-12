@@ -10,13 +10,13 @@ import (
 
 // ProcessManager manages the lifecycle of a child process.
 type ProcessManager struct {
-	cmd       *exec.Cmd
-	fdConfig  *FDConfig
-	ctx       context.Context
-	cancel    context.CancelFunc
-	exitCode  int
-	exited    bool
-	waitDone  chan struct{}
+	cmd      *exec.Cmd
+	fdConfig *FDConfig
+	ctx      context.Context
+	cancel   context.CancelFunc
+	exitCode int
+	exited   bool
+	waitDone chan struct{}
 }
 
 // NewProcessManager creates a new process manager.

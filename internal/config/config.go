@@ -35,18 +35,18 @@ type RunConfig struct {
 
 // ServiceConfig defines settings for a managed API service.
 type ServiceConfig struct {
-	HostPattern    string   `toml:"host_pattern"`
-	AuthStrategy   string   `toml:"auth_strategy"`
-	HeaderName     string   `toml:"header_name"` // For "header" auth strategy
-	CredentialRef  string   `toml:"credential_ref"`
-	Placeholder    string   `toml:"placeholder"` // Token app sends that we replace
-	AllowedMethods []string `toml:"allowed_methods"`
-	AllowedPaths   []string `toml:"allowed_paths"`
-	MaxBodyBytes   int64    `toml:"max_body_bytes"`
-	ClientGroups   []string `toml:"client_groups"`
-	Drop           []string `toml:"drop"`  // URL patterns to block (drops traffic)
-	Strip          []string `toml:"strip"` // Headers to strip from requests
-	Run            *RunConfig `toml:"run"` // Run mode configuration (optional)
+	HostPattern    string     `toml:"host_pattern"`
+	AuthStrategy   string     `toml:"auth_strategy"`
+	HeaderName     string     `toml:"header_name"` // For "header" auth strategy
+	CredentialRef  string     `toml:"credential_ref"`
+	Placeholder    string     `toml:"placeholder"` // Token app sends that we replace
+	AllowedMethods []string   `toml:"allowed_methods"`
+	AllowedPaths   []string   `toml:"allowed_paths"`
+	MaxBodyBytes   int64      `toml:"max_body_bytes"`
+	ClientGroups   []string   `toml:"client_groups"`
+	Drop           []string   `toml:"drop"`  // URL patterns to block (drops traffic)
+	Strip          []string   `toml:"strip"` // Headers to strip from requests
+	Run            *RunConfig `toml:"run"`   // Run mode configuration (optional)
 }
 
 // LoggingConfig contains logging settings.
