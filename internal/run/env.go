@@ -1,0 +1,111 @@
+package run
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+)
+
+// EnvBuilder builds environment variables for a child process.
+type EnvBuilder struct {
+	env map[string]string
+}
+
+// NewEnvBuilder creates a new environment builder.
+func NewEnvBuilder() *EnvBuilder {
+	return &EnvBuilder{
+		env: make(map[string]string),
+	}
+}
+
+// InheritParent copies the parent process's environment.
+func (eb *EnvBuilder) InheritParent() *EnvBuilder {
+	for _, e := range os.Environ() {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			eb.env[parts[0]] = parts[1]
+		}
+	}
+	return eb
+}
+
+// LoadEnvFile loads environment variables from a .env file.
+// Format: KEY=value (one per line, # for comments)
+// Supports quoted values: KEY="value with spaces"
+func (eb *EnvBuilder) LoadEnvFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open env file: %w", err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Parse KEY=value
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			return fmt.Errorf("line %d: invalid format (expected KEY=value): %s", lineNum, line)
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		// Remove quotes if present
+		if len(value) >= 2 {
+			if (value[0] == '"' && value[len(value)-1] == '"') ||
+				(value[0] == '\'' && value[len(value)-1] == '\'') {
+				value = value[1 : len(value)-1]
+			}
+		}
+
+		eb.env[key] = value
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading env file: %w", err)
+	}
+
+	return nil
+}
+
+// Set sets a single environment variable.
+func (eb *EnvBuilder) Set(key, value string) *EnvBuilder {
+	eb.env[key] = value
+	return eb
+}
+
+// SetProxyVars sets the proxy-related environment variables.
+// Adds: HTTP_PROXY, HTTPS_PROXY, CHAPERONE_SOCKET, CHAPERONE_SERVICE
+func (eb *EnvBuilder) SetProxyVars(socketPath, serviceName string) *EnvBuilder {
+	proxyURL := fmt.Sprintf("http+unix://%s", socketPath)
+	eb.env["HTTP_PROXY"] = proxyURL
+	eb.env["HTTPS_PROXY"] = proxyURL
+	eb.env["CHAPERONE_SOCKET"] = socketPath
+	eb.env["CHAPERONE_SERVICE"] = serviceName
+	return eb
+}
+
+// Build returns the environment as a slice of "KEY=value" strings.
+func (eb *EnvBuilder) Build() []string {
+	result := make([]string, 0, len(eb.env))
+	for k, v := range eb.env {
+		result = append(result, fmt.Sprintf("%s=%s", k, v))
+	}
+	return result
+}
+
+// GenerateSocketPath generates a socket path for a service.
+// Format: /tmp/chaperone-<service>-<pid>.sock
+func GenerateSocketPath(serviceName string, pid int) string {
+	return fmt.Sprintf("/tmp/chaperone-%s-%d.sock", serviceName, pid)
+}
