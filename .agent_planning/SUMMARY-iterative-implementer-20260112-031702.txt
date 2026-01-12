@@ -1,0 +1,194 @@
+Agent: iterative-implementer | 2026-01-12 03:17:02
+Mode: manual
+Completed: Config schema, process lifecycle, env management, run command | Files: 12 | Commits: 4
+Cache invalidated: None required (new feature implementation)
+Status: complete
+
+=== IMPLEMENTATION SUMMARY ===
+
+Feature: Chaperone Run Mode - Application Launcher with Socket-Based Proxy
+
+Deliverables Completed:
+1. Configuration Schema Extension
+2. Process Lifecycle Manager
+3. Environment & Socket Management
+4. Command Implementation
+
+=== FILES CREATED ===
+
+internal/config/merge.go (117 lines)
+- LoadWithMerge() function for user + project config merging
+- Service-level replacement strategy for services
+- Field-level override for server/logging/audit
+
+internal/config/expand.go (127 lines)
+- Variable expansion: $VAR, ${VAR}, \$VAR formats
+- ExpandRunConfig() for expanding all RunConfig fields
+- Error on undefined variables (fail fast)
+
+internal/config/merge_test.go (225 lines)
+- Tests for config merging precedence
+- Service replacement verification
+- Field-level override verification
+
+internal/config/expand_test.go (275 lines)
+- Tests for variable expansion edge cases
+- Escape sequence handling
+- Undefined variable error handling
+
+internal/run/fd.go (105 lines)
+- FDConfig for file descriptor management
+- Support for inherit/file/discard modes
+- Safe double-close handling
+
+internal/run/fd_test.go (223 lines)
+- Tests for all FD modes
+- File creation and closure verification
+- Inherited FD handling
+
+internal/run/spawner.go (137 lines)
+- ProcessManager for child process lifecycle
+- Signal forwarding (SIGTERM with timeout, then SIGKILL)
+- Exit code tracking and graceful shutdown
+
+internal/run/spawner_test.go (296 lines)
+- Start/Wait/Signal tests
+- Graceful stop with timeout
+- Exit code verification
+
+internal/run/env.go (106 lines)
+- EnvBuilder with method chaining
+- .env file parsing (KEY=value, comments, quotes)
+- Proxy environment variable injection
+- Socket path generation
+
+internal/run/env_test.go (293 lines)
+- Parent environment inheritance
+- Env file format tests
+- Proxy variable format verification
+- Socket path generation tests
+
+=== FILES MODIFIED ===
+
+internal/config/config.go
+- Added RunConfig struct (Command, Args, EnvFile, SocketPath, Stdout, Stderr)
+- Added Run *RunConfig field to ServiceConfig
+- Added validation for RunConfig fields
+- Added defaults for RunConfig (inherit for stdout/stderr)
+
+cmd/chaperone/cmd/run.go (305 lines)
+- Complete rewrite from deprecated proxy launcher
+- Load and merge configs (user + project)
+- Start proxy on generated Unix socket
+- Spawn child with proxy environment
+- Signal forwarding and lifecycle management
+- Exit with child's exit code
+
+=== COMMITS ===
+
+62f7401 - feat(config): add run mode configuration schema and utilities
+d4673cc - feat(run): implement process lifecycle manager
+972e156 - feat(run): implement environment builder and socket path generation
+8c50bf3 - feat(run): implement run command for application spawning
+
+=== TEST COVERAGE ===
+
+All unit tests passing for new modules:
+- internal/config: merge and expansion tests
+- internal/run: fd, spawner, env tests
+
+Build verification:
+- go build ./... succeeds
+- All new packages compile cleanly
+
+=== DEFINITION OF DONE STATUS ===
+
+Configuration Schema Extension: ✓ Complete
+- RunConfig struct with all fields
+- ServiceConfig.Run field added
+- LoadWithMerge() implemented
+- Service-level replacement working
+- Variable expansion working
+- Unit tests passing
+
+Process Lifecycle Manager: ✓ Complete
+- ProcessManager with all methods
+- FDConfig with all modes
+- SIGTERM forwarding with timeout
+- Exit code handling
+- Unit tests passing
+
+Environment & Socket Management: ✓ Complete
+- EnvBuilder with all methods
+- Env file parsing working
+- GenerateSocketPath implemented
+- SetProxyVars working
+- Missing env_file causes error
+- Unit tests passing
+
+Command Implementation: ✓ Complete
+- Service name argument required
+- Config loading and merging
+- RunConfig validation
+- Variable expansion
+- Proxy startup with socket
+- Child process spawning
+- Signal forwarding
+- Exit code propagation
+
+Verification: ✓ Complete
+- go build ./... succeeds
+- go test passes for new modules
+- Command help working
+- Ready for manual testing
+
+=== USAGE EXAMPLE ===
+
+Config file (.chaperone.toml):
+```toml
+[[services]]
+name = "myapp"
+host_pattern = "api.example.com"
+auth_strategy = "bearer"
+credential_ref = "env:API_KEY"
+
+[services.myapp.run]
+command = "node"
+args = ["server.js"]
+env_file = ".env"
+stdout = "inherit"
+stderr = "file:/tmp/myapp.log"
+```
+
+Run command:
+```bash
+chaperone run myapp
+```
+
+This will:
+1. Start proxy on /tmp/chaperone-myapp-<pid>.sock
+2. Load .env file
+3. Set HTTP_PROXY, HTTPS_PROXY, CHAPERONE_SOCKET, CHAPERONE_SERVICE
+4. Spawn node server.js with environment
+5. Forward signals to child
+6. Exit with child's exit code
+
+=== NEXT STEPS ===
+
+Manual testing recommended:
+1. Create test config with [services.test.run] section
+2. Run: chaperone run test
+3. Verify environment variables in child process
+4. Test signal forwarding (Ctrl+C)
+5. Verify exit code propagation
+
+Integration testing:
+- Spawn real application
+- Verify proxy intercepts requests
+- Verify credentials injected
+- Verify lifecycle management
+
+Documentation:
+- Update README with run mode usage
+- Add example configs
+- Document environment variables
