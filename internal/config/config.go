@@ -23,6 +23,16 @@ type ServerConfig struct {
 	Socket  string `toml:"socket"` // Unix socket path (mutually exclusive with Address/Port)
 }
 
+// RunConfig defines settings for spawning and managing child processes in run mode.
+type RunConfig struct {
+	Command    string   `toml:"command"`     // Command to execute (searches PATH)
+	Args       []string `toml:"args"`        // Command arguments
+	EnvFile    string   `toml:"env_file"`    // Path to .env file (KEY=value format)
+	SocketPath string   `toml:"socket_path"` // Override default socket path
+	Stdout     string   `toml:"stdout"`      // "inherit", "file:/path", or "discard"
+	Stderr     string   `toml:"stderr"`      // "inherit", "file:/path", or "discard"
+}
+
 // ServiceConfig defines settings for a managed API service.
 type ServiceConfig struct {
 	HostPattern    string   `toml:"host_pattern"`
@@ -36,6 +46,7 @@ type ServiceConfig struct {
 	ClientGroups   []string `toml:"client_groups"`
 	Drop           []string `toml:"drop"`  // URL patterns to block (drops traffic)
 	Strip          []string `toml:"strip"` // Headers to strip from requests
+	Run            *RunConfig `toml:"run"` // Run mode configuration (optional)
 }
 
 // LoggingConfig contains logging settings.
@@ -100,6 +111,21 @@ func (c *Config) Validate() error {
 		if svc.Placeholder != "" && len(svc.Placeholder) < 8 {
 			return fmt.Errorf("service %q: placeholder must be at least 8 characters for security (got %d)", name, len(svc.Placeholder))
 		}
+
+		// Validate RunConfig if present
+		if svc.Run != nil {
+			if svc.Run.Command == "" {
+				return fmt.Errorf("service %q: run.command is required when run section is present", name)
+			}
+			// Validate stdout/stderr modes
+			validModes := map[string]bool{"": true, "inherit": true, "discard": true}
+			if !validModes[svc.Run.Stdout] && len(svc.Run.Stdout) > 0 && svc.Run.Stdout[:5] != "file:" {
+				return fmt.Errorf("service %q: run.stdout must be 'inherit', 'discard', or 'file:/path'", name)
+			}
+			if !validModes[svc.Run.Stderr] && len(svc.Run.Stderr) > 0 && svc.Run.Stderr[:5] != "file:" {
+				return fmt.Errorf("service %q: run.stderr must be 'inherit', 'discard', or 'file:/path'", name)
+			}
+		}
 	}
 
 	return nil
@@ -130,5 +156,20 @@ func (c *Config) SetDefaults() {
 	}
 	if c.Logging.Output == "" {
 		c.Logging.Output = "stdout"
+	}
+
+	// RunConfig defaults
+	for name := range c.Services {
+		svc := c.Services[name]
+		if svc.Run != nil {
+			if svc.Run.Stdout == "" {
+				svc.Run.Stdout = "inherit"
+			}
+			if svc.Run.Stderr == "" {
+				svc.Run.Stderr = "inherit"
+			}
+			// Update the map entry (necessary because Services is a map of values, not pointers)
+			c.Services[name] = svc
+		}
 	}
 }
