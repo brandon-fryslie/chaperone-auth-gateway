@@ -287,6 +287,34 @@ func TestRunCommandProperties(t *testing.T) {
 	})
 }
 
+// TestCreateTempLogFile verifies temporary log file creation
+func TestCreateTempLogFile(t *testing.T) {
+	f, path, err := createTempLogFile()
+	if err != nil {
+		t.Fatalf("createTempLogFile failed: %v", err)
+	}
+	defer f.Close()
+	defer os.Remove(path)
+
+	// Verify file exists
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("temporary log file does not exist: %v", err)
+	}
+
+	// Verify file is writable
+	_, err = f.WriteString("test log entry\n")
+	if err != nil {
+		t.Errorf("failed to write to log file: %v", err)
+	}
+
+	// Verify file name pattern
+	if !strings.Contains(path, "chaperone-run-") || !strings.Contains(path, ".log") {
+		t.Errorf("log file name does not match expected pattern: %s", path)
+	}
+
+	t.Logf("created temporary log file: %s", path)
+}
+
 // TestCLICommandParsing verifies that CLI commands can override config commands
 func TestCLICommandParsing(t *testing.T) {
 	t.Run("single_word_command", func(t *testing.T) {

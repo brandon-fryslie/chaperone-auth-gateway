@@ -130,8 +130,14 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 
-	// Set up logging
-	setupLogging(cfg)
+	// Create temporary log file for run mode
+	logFile, logPath, err := createTempLogFile()
+	if err != nil {
+		return fmt.Errorf("failed to create temporary log file: %w", err)
+	}
+
+	// Set up logging to the temporary file
+	setupLoggingToWriter(cfg, logFile)
 
 	log.Info(ctx, "chaperone run mode starting",
 		"version", version,
@@ -142,6 +148,12 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 
 	// Create shutdown manager
 	shutdownMgr := shutdown.NewManager(slog.Default())
+
+	// Register cleanup callback to close log file on exit
+	shutdownMgr.Register(func(ctx context.Context) error {
+		log.Info(ctx, "closing temporary log file", "path", logPath)
+		return logFile.Close()
+	})
 
 	// Create ephemeral CA directory
 	ephemeralCADir := fmt.Sprintf("/tmp/chaperone-ca-%d", os.Getpid())
@@ -313,6 +325,10 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 
 	log.Info(ctx, "child process started successfully")
 
+	// Print log file path to stderr before passing control to child
+	// This informs the user where to find logs without polluting stdout
+	fmt.Fprintf(os.Stderr, "Log file: %s\n", logPath)
+
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
@@ -357,4 +373,25 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	// Exit with child's exit code
 	os.Exit(childExitCode)
 	return nil // Never reached
+}
+
+// createTempLogFile creates a temporary log file for run mode logging.
+// Returns the open file and its path. The caller is responsible for closing the file.
+func createTempLogFile() (*os.File, string, error) {
+	// Create temp file in system temp directory
+	f, err := os.CreateTemp("", "chaperone-run-*.log")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create temporary log file: %w", err)
+	}
+	return f, f.Name(), nil
+}
+
+// setupLoggingToWriter sets up logging to a specific writer.
+// Similar to setupLogging but allows specifying the output destination.
+func setupLoggingToWriter(cfg *config.Config, writer *os.File) {
+	log.Setup(log.Config{
+		Level:  cfg.Logging.Level,
+		Format: log.Format(logFormat),
+		Output: writer,
+	})
 }
