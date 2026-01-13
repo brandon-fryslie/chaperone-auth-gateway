@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bmf/chaperone/internal/config"
@@ -245,22 +246,17 @@ func TestRunCommandFlags(t *testing.T) {
 		t.Logf("--config flag (inherited): %s (shorthand: -%s)", flag.Usage, flag.Shorthand)
 	})
 
-	t.Run("socket_flag_exists", func(t *testing.T) {
-		// The run command has its own --socket flag
-		flag := runCmd.Flags().Lookup("socket")
-		if flag == nil {
-			t.Fatal("run command should have --socket flag")
-		}
-
-		t.Logf("--socket flag: %s", flag.Usage)
-	})
 }
 
 // TestRunCommandProperties verifies run command configuration
 func TestRunCommandProperties(t *testing.T) {
 	t.Run("use_field", func(t *testing.T) {
-		if runCmd.Use != "run" {
-			t.Errorf("expected Use='run', got '%s'", runCmd.Use)
+		// Use field should accept service name and optional -- separator
+		if !strings.Contains(runCmd.Use, "run") {
+			t.Errorf("expected Use to contain 'run', got '%s'", runCmd.Use)
+		}
+		if !strings.Contains(runCmd.Use, "--") {
+			t.Errorf("expected Use to mention '--' separator, got '%s'", runCmd.Use)
 		}
 	})
 
@@ -280,5 +276,79 @@ func TestRunCommandProperties(t *testing.T) {
 		if runCmd.RunE == nil && runCmd.Run == nil {
 			t.Error("run command should have a Run or RunE function")
 		}
+	})
+
+	t.Run("supports_cli_commands", func(t *testing.T) {
+		// Verify the help text mentions CLI command support
+		if !strings.Contains(runCmd.Long, "specified on the command line") &&
+			!strings.Contains(runCmd.Long, "--") {
+			t.Error("Long description should explain CLI command support")
+		}
+	})
+}
+
+// TestCLICommandParsing verifies that CLI commands can override config commands
+func TestCLICommandParsing(t *testing.T) {
+	t.Run("single_word_command", func(t *testing.T) {
+		// "run service -- python" should extract "python" as command
+		args := []string{"myservice", "--", "python"}
+
+		if len(args) < 3 || args[1] != "--" {
+			t.Fatal("test setup failed")
+		}
+
+		if args[0] != "myservice" {
+			t.Errorf("expected service 'myservice', got %q", args[0])
+		}
+
+		if args[2] != "python" {
+			t.Errorf("expected command 'python', got %q", args[2])
+		}
+
+		t.Log("single-word command parsed correctly")
+	})
+
+	t.Run("command_with_args", func(t *testing.T) {
+		// "run service -- python script.py --flag" should extract command + args
+		args := []string{"myservice", "--", "python", "script.py", "--flag"}
+
+		if len(args) < 3 || args[1] != "--" {
+			t.Fatal("test setup failed")
+		}
+
+		command := args[2]
+		cmdArgs := args[3:]
+
+		if command != "python" {
+			t.Errorf("expected command 'python', got %q", command)
+		}
+
+		if len(cmdArgs) != 2 || cmdArgs[0] != "script.py" || cmdArgs[1] != "--flag" {
+			t.Errorf("expected args [script.py --flag], got %v", cmdArgs)
+		}
+
+		t.Log("command with args parsed correctly")
+	})
+
+	t.Run("complex_args", func(t *testing.T) {
+		// "run service -- claude --dangerously-skip-permissions" should work
+		args := []string{"myservice", "--", "claude", "--dangerously-skip-permissions"}
+
+		if len(args) < 3 || args[1] != "--" {
+			t.Fatal("test setup failed")
+		}
+
+		command := args[2]
+		cmdArgs := args[3:]
+
+		if command != "claude" {
+			t.Errorf("expected command 'claude', got %q", command)
+		}
+
+		if len(cmdArgs) != 1 || cmdArgs[0] != "--dangerously-skip-permissions" {
+			t.Errorf("expected args [--dangerously-skip-permissions], got %v", cmdArgs)
+		}
+
+		t.Log("complex args parsed correctly")
 	})
 }

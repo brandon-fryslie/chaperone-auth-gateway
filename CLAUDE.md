@@ -4,9 +4,10 @@
 MITM proxy that injects API credentials into requests. Apps use proxy without handling secrets directly.
 
 ## CLI Commands
-- `cmd/chaperone/cmd/inject.go` - Main mode: inject credentials (was `run`)
-- `cmd/chaperone/cmd/examine.go` - Auth discovery mode (passthrough logging)
-- `cmd/chaperone/cmd/check.go` - Security posture check (assess configuration)
+- `cmd/chaperone/cmd/run.go` - **Run mode**: Start proxy + spawn child process with injected auth (supports config file and CLI-defined commands)
+- `cmd/chaperone/cmd/inject.go` - Inject mode: inject credentials (legacy)
+- `cmd/chaperone/cmd/examine.go` - Examine mode: Auth discovery mode (passthrough logging)
+- `cmd/chaperone/cmd/check.go` - Check mode: Security posture check (assess configuration)
 - `cmd/chaperone/cmd/root.go` - Root command, config resolution, CA path helpers
 
 ## Core Proxy Architecture
@@ -149,6 +150,12 @@ max_body_bytes = 1048576
 
 ## CLI Usage
 ```bash
+# Run mode: Start proxy and spawn child process with injected auth
+chaperone run openai                                    # Uses config [services.openai.run]
+chaperone run openai -- python script.py                # Override config with CLI command
+chaperone run zai -- claude --dangerously-skip-permissions  # Complex command
+chaperone run -c custom.toml myservice -- bash          # Custom config + CLI command
+
 # Inject mode (default config: ~/.config/chaperone/chaperone.toml)
 chaperone inject                    # All services
 chaperone inject openai             # Specific service
@@ -166,6 +173,8 @@ chaperone check -c custom.toml      # Check with specific config
 ```
 
 ## Recent Features
+- **CLI command override in run mode**: Commands can be defined in config file OR overridden via CLI with `-- command args` syntax
+- **Run mode**: `chaperone run` starts proxy + spawns child process with injected auth
 - **Security check**: `chaperone check` command to assess security posture (cmd/chaperone/cmd/check.go)
 - **Audit logging**: JSON audit trail for credential injections (internal/audit/)
 - **Placeholder authentication**: Optional placeholder token verification (Layer 2 security)

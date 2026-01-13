@@ -25,7 +25,7 @@ import (
 
 // runCmd represents the run command
 var runCmd = &cobra.Command{
-	Use:   "run <service-name>",
+	Use:   "run <service-name> [-- <command> <arg1> <arg2> ...]",
 	Short: "Spawn application with proxy environment",
 	Long: `Spawn and manage an application process with automatic proxy configuration.
 
@@ -36,7 +36,8 @@ This command:
 4. Forwards signals (SIGTERM) to the application
 5. Exits with the application's exit code
 
-The application is configured in [services.<name>.run] section of the config.
+The application can be configured in [services.<name>.run] section of the config,
+or specified on the command line after the '--' separator.
 
 Security:
   The proxy generates a fresh CA certificate for each invocation,
@@ -47,9 +48,11 @@ Security:
   No system-wide CA trust is required.
 
 Examples:
-  chaperone run openai           # Run the openai service
-  chaperone run -c custom.toml myservice`,
-	Args: cobra.ExactArgs(1),
+  chaperone run openai                          # Run the openai service (uses config)
+  chaperone run -c custom.toml myservice        # Run with custom config
+  chaperone run openai -- python script.py      # Override config with CLI command
+  chaperone run zai -- claude --dangerously-skip-permissions`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: runWithProxy,
 }
 
@@ -60,6 +63,18 @@ func init() {
 func runWithProxy(cmd *cobra.Command, args []string) error {
 	serviceName := args[0]
 	ctx := context.Background()
+
+	// Check if CLI command is provided after '--'
+	var cliCommand []string
+	if len(args) > 1 && args[1] == "--" {
+		// CLI command provided: "run service -- command arg1 arg2"
+		cliCommand = args[2:]
+	} else if len(args) > 1 {
+		// Invalid syntax: arguments without '--' separator
+		return fmt.Errorf("invalid syntax: extra arguments must be preceded by '--' separator\n"+
+			"Usage: chaperone run <service> -- <command> <arg1> ...",
+		)
+	}
 
 	// Load and merge configs (user + project)
 	cfg, err := config.LoadWithMerge()
@@ -73,9 +88,22 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("service %q not found in config", serviceName)
 	}
 
-	// Validate service has RunConfig
-	if svc.Run == nil {
-		return fmt.Errorf("service %q does not have a [services.%s.run] section", serviceName, serviceName)
+	// Handle CLI command override or require config RunConfig
+	if len(cliCommand) > 0 {
+		// CLI command provided: create RunConfig if needed
+		if svc.Run == nil {
+			svc.Run = &config.RunConfig{}
+		}
+		// Override with CLI command
+		svc.Run.Command = cliCommand[0]
+		svc.Run.Args = cliCommand[1:]
+		// Update service in map
+		cfg.Services[serviceName] = svc
+	} else {
+		// No CLI command: require RunConfig from config file
+		if svc.Run == nil {
+			return fmt.Errorf("service %q does not have a [services.%s.run] section and no command provided via CLI", serviceName, serviceName)
+		}
 	}
 
 	// Expand variables in RunConfig
