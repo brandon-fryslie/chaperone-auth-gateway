@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -36,6 +37,14 @@ This command:
 5. Exits with the application's exit code
 
 The application is configured in [services.<name>.run] section of the config.
+
+Security:
+  The proxy generates a fresh CA certificate for each invocation,
+  stored in /tmp/chaperone-ca-<pid>/. This CA is only trusted by
+  the spawned application (via environment variables) and is
+  automatically deleted when the proxy exits.
+
+  No system-wide CA trust is required.
 
 Examples:
   chaperone run openai           # Run the openai service
@@ -106,19 +115,30 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	// Create shutdown manager
 	shutdownMgr := shutdown.NewManager(slog.Default())
 
-	// Initialize CA for MITM
-	caDir, caKeyPath, caCertPath, err := getCAPath()
-	if err != nil {
-		return fmt.Errorf("failed to get CA path: %w", err)
+	// Create ephemeral CA directory
+	ephemeralCADir := fmt.Sprintf("/tmp/chaperone-ca-%d", os.Getpid())
+	if err := os.MkdirAll(ephemeralCADir, 0700); err != nil {
+		return fmt.Errorf("failed to create ephemeral CA directory: %w", err)
 	}
 
-	if err := os.MkdirAll(caDir, 0700); err != nil {
-		return fmt.Errorf("failed to create CA directory: %w", err)
-	}
+	// Register cleanup callback to delete CA directory on exit
+	shutdownMgr.Register(func(ctx context.Context) error {
+		log.Info(ctx, "cleaning up ephemeral CA directory", "path", ephemeralCADir)
+		return os.RemoveAll(ephemeralCADir)
+	})
 
+	caCertPath := filepath.Join(ephemeralCADir, "ca-cert.pem")
+	caKeyPath := filepath.Join(ephemeralCADir, "ca-key.pem")
+
+	log.Info(ctx, "generating ephemeral CA certificate",
+		"ca_dir", ephemeralCADir,
+		"ca_cert", caCertPath,
+	)
+
+	// Generate fresh CA (LoadOrGenerateCA will generate if files don't exist)
 	ca, err := mitm.LoadOrGenerateCA(caKeyPath, caCertPath)
 	if err != nil {
-		return fmt.Errorf("failed to initialize CA: %w", err)
+		return fmt.Errorf("failed to generate ephemeral CA: %w", err)
 	}
 
 	certCache := mitm.NewCertCache(ca, slog.Default())
@@ -231,6 +251,13 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 
 	// Set proxy environment variables
 	envBuilder.SetProxyVars(socketPath, serviceName)
+
+	// Set CA environment variables
+	log.Info(ctx, "setting CA environment variables",
+		"ca_cert", caCertPath,
+		"ca_env_vars", svc.Run.CAEnvVars,
+	)
+	envBuilder.SetCAEnvVars(caCertPath, svc.Run.CAEnvVars)
 
 	// Create FD config
 	fdConfig, err := run.NewFDConfig(svc.Run.Stdout, svc.Run.Stderr)

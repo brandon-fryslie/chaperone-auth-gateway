@@ -31,6 +31,7 @@ type RunConfig struct {
 	SocketPath string   `toml:"socket_path"` // Override default socket path
 	Stdout     string   `toml:"stdout"`      // "inherit", "file:/path", or "discard"
 	Stderr     string   `toml:"stderr"`      // "inherit", "file:/path", or "discard"
+	CAEnvVars  []string `toml:"ca_env_vars"` // CA cert environment variables to set (defaults to all standard vars)
 }
 
 // ServiceConfig defines settings for a managed API service.

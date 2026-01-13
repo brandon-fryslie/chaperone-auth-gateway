@@ -95,6 +95,30 @@ func (eb *EnvBuilder) SetProxyVars(socketPath, serviceName string) *EnvBuilder {
 	return eb
 }
 
+// SetCAEnvVars sets CA certificate environment variables.
+// If caEnvVars is empty, sets all standard CA environment variables.
+// Always sets CHAPERONE_CA_CERT regardless of caEnvVars.
+func (eb *EnvBuilder) SetCAEnvVars(caCertPath string, caEnvVars []string) *EnvBuilder {
+	if len(caEnvVars) == 0 {
+		// Default: set all standard CA environment variables
+		caEnvVars = []string{
+			"SSL_CERT_FILE",
+			"NODE_EXTRA_CA_CERTS",
+			"REQUESTS_CA_BUNDLE",
+			"CURL_CA_BUNDLE",
+		}
+	}
+
+	for _, envVar := range caEnvVars {
+		eb.env[envVar] = caCertPath
+	}
+
+	// Always set CHAPERONE_CA_CERT
+	eb.env["CHAPERONE_CA_CERT"] = caCertPath
+
+	return eb
+}
+
 // Build returns the environment as a slice of "KEY=value" strings.
 func (eb *EnvBuilder) Build() []string {
 	result := make([]string, 0, len(eb.env))

@@ -94,6 +94,92 @@ func TestEnvBuilder_SetProxyVars(t *testing.T) {
 	}
 }
 
+func TestEnvBuilder_SetCAEnvVars(t *testing.T) {
+	tests := []struct {
+		name        string
+		caCertPath  string
+		caEnvVars   []string
+		wantEnvVars map[string]string
+	}{
+		{
+			name:       "default sets all standard vars",
+			caCertPath: "/tmp/ca-cert.pem",
+			caEnvVars:  nil,
+			wantEnvVars: map[string]string{
+				"SSL_CERT_FILE":       "/tmp/ca-cert.pem",
+				"NODE_EXTRA_CA_CERTS": "/tmp/ca-cert.pem",
+				"REQUESTS_CA_BUNDLE":  "/tmp/ca-cert.pem",
+				"CURL_CA_BUNDLE":      "/tmp/ca-cert.pem",
+				"CHAPERONE_CA_CERT":   "/tmp/ca-cert.pem",
+			},
+		},
+		{
+			name:       "empty slice sets all standard vars",
+			caCertPath: "/tmp/ca-cert.pem",
+			caEnvVars:  []string{},
+			wantEnvVars: map[string]string{
+				"SSL_CERT_FILE":       "/tmp/ca-cert.pem",
+				"NODE_EXTRA_CA_CERTS": "/tmp/ca-cert.pem",
+				"REQUESTS_CA_BUNDLE":  "/tmp/ca-cert.pem",
+				"CURL_CA_BUNDLE":      "/tmp/ca-cert.pem",
+				"CHAPERONE_CA_CERT":   "/tmp/ca-cert.pem",
+			},
+		},
+		{
+			name:       "custom vars only sets specified",
+			caCertPath: "/tmp/ca.pem",
+			caEnvVars:  []string{"NODE_EXTRA_CA_CERTS"},
+			wantEnvVars: map[string]string{
+				"NODE_EXTRA_CA_CERTS": "/tmp/ca.pem",
+				"CHAPERONE_CA_CERT":   "/tmp/ca.pem",
+			},
+		},
+		{
+			name:       "multiple custom vars",
+			caCertPath: "/tmp/ephemeral-ca.pem",
+			caEnvVars:  []string{"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"},
+			wantEnvVars: map[string]string{
+				"SSL_CERT_FILE":      "/tmp/ephemeral-ca.pem",
+				"REQUESTS_CA_BUNDLE": "/tmp/ephemeral-ca.pem",
+				"CHAPERONE_CA_CERT":  "/tmp/ephemeral-ca.pem",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := NewEnvBuilder()
+			builder.SetCAEnvVars(tt.caCertPath, tt.caEnvVars)
+
+			env := builder.Build()
+			envMap := parseEnvSlice(env)
+
+			// Check expected vars are present with correct values
+			for key, expectedVal := range tt.wantEnvVars {
+				if envMap[key] != expectedVal {
+					t.Errorf("env[%s] = %q, want %q", key, envMap[key], expectedVal)
+				}
+			}
+
+			// Check no extra CA-related vars are set
+			caRelatedVars := []string{
+				"SSL_CERT_FILE",
+				"NODE_EXTRA_CA_CERTS",
+				"REQUESTS_CA_BUNDLE",
+				"CURL_CA_BUNDLE",
+				"CHAPERONE_CA_CERT",
+			}
+			for _, varName := range caRelatedVars {
+				if _, expected := tt.wantEnvVars[varName]; !expected {
+					if val, exists := envMap[varName]; exists {
+						t.Errorf("unexpected env var %s=%q", varName, val)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestEnvBuilder_LoadEnvFile(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -258,6 +344,36 @@ func TestEnvBuilder_Chaining(t *testing.T) {
 	}
 }
 
+func TestEnvBuilder_Chaining_WithCAEnvVars(t *testing.T) {
+	// Test that SetCAEnvVars can be chained with other methods
+	eb := NewEnvBuilder()
+	eb.InheritParent()
+	eb.SetProxyVars("/tmp/test.sock", "myservice")
+	eb.SetCAEnvVars("/tmp/ca-cert.pem", nil)
+
+	env := eb.Build()
+	vars := parseEnvSlice(env)
+
+	// Should have proxy vars
+	if vars["HTTP_PROXY"] != "http+unix:///tmp/test.sock" {
+		t.Errorf("HTTP_PROXY=%q, want http+unix:///tmp/test.sock", vars["HTTP_PROXY"])
+	}
+
+	// Should have CA vars
+	expectedCAVars := []string{
+		"SSL_CERT_FILE",
+		"NODE_EXTRA_CA_CERTS",
+		"REQUESTS_CA_BUNDLE",
+		"CURL_CA_BUNDLE",
+		"CHAPERONE_CA_CERT",
+	}
+	for _, varName := range expectedCAVars {
+		if vars[varName] != "/tmp/ca-cert.pem" {
+			t.Errorf("%s=%q, want /tmp/ca-cert.pem", varName, vars[varName])
+		}
+	}
+}
+
 func TestGenerateSocketPath(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -287,4 +403,16 @@ func TestGenerateSocketPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Helper function to parse env slice into map
+func parseEnvSlice(env []string) map[string]string {
+	result := make(map[string]string)
+	for _, e := range env {
+		parts := strings.SplitN(e, "=", 2)
+		if len(parts) == 2 {
+			result[parts[0]] = parts[1]
+		}
+	}
+	return result
 }
