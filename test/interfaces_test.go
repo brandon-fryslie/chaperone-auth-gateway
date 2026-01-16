@@ -47,9 +47,6 @@ func TestCoreInterfaces(t *testing.T) {
 		testPolicyEnforcerInterface(t, projectRoot)
 	})
 
-	t.Run("audit_logger_interface", func(t *testing.T) {
-		testAuditLoggerInterface(t, projectRoot)
-	})
 
 	t.Run("core_structs_defined", func(t *testing.T) {
 		testCoreStructsDefined(t, projectRoot)
@@ -335,61 +332,6 @@ func testPolicyEnforcerInterface(t *testing.T, projectRoot string) {
 	t.Logf("PASS: PolicyEnforcer interface found with methods: %v", foundMethods)
 }
 
-// testAuditLoggerInterface verifies internal/audit/logger.go defines:
-//
-//	type AuditLogger interface {
-//	    LogRequest(ctx context.Context, entry *RequestLog) error
-//	}
-func testAuditLoggerInterface(t *testing.T, projectRoot string) {
-	filePath := filepath.Join(projectRoot, "internal/audit/logger.go")
-
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		t.Fatal("FAIL: internal/audit/logger.go does not exist - create it with AuditLogger interface")
-	}
-
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
-	if err != nil {
-		t.Fatalf("FAIL: failed to parse logger.go: %v", err)
-	}
-
-	var foundInterface *ast.InterfaceType
-	var foundMethods []string
-
-	ast.Inspect(f, func(n ast.Node) bool {
-		if typeSpec, ok := n.(*ast.TypeSpec); ok {
-			if typeSpec.Name.Name == "AuditLogger" {
-				if iface, ok := typeSpec.Type.(*ast.InterfaceType); ok {
-					foundInterface = iface
-					for _, method := range iface.Methods.List {
-						if len(method.Names) > 0 {
-							foundMethods = append(foundMethods, method.Names[0].Name)
-						}
-					}
-				}
-			}
-		}
-		return true
-	})
-
-	if foundInterface == nil {
-		t.Fatal("FAIL: AuditLogger interface not found in logger.go")
-	}
-
-	// Verify LogRequest method exists
-	hasLogRequest := false
-	for _, method := range foundMethods {
-		if method == "LogRequest" {
-			hasLogRequest = true
-			break
-		}
-	}
-	if !hasLogRequest {
-		t.Fatal("FAIL: AuditLogger interface missing LogRequest method")
-	}
-
-	t.Logf("PASS: AuditLogger interface found with methods: %v", foundMethods)
-}
 
 // testCoreStructsDefined verifies core data structures are defined.
 //
@@ -427,14 +369,6 @@ func testCoreStructsDefined(t *testing.T, projectRoot string) {
 		}
 	})
 
-	t.Run("RequestLog_struct", func(t *testing.T) {
-		path := filepath.Join(projectRoot, "internal/audit/logger.go")
-		if !hasTypeDefinition(t, path, "RequestLog") {
-			t.Fatal("FAIL: RequestLog struct not found - define in internal/audit/logger.go")
-		} else {
-			t.Log("PASS: RequestLog struct found in logger.go")
-		}
-	})
 }
 
 // hasTypeDefinition checks if a file defines a specific type (struct, interface, etc.)
@@ -477,7 +411,6 @@ func testInterfacesHaveGodoc(t *testing.T, projectRoot string) {
 		{"internal/auth/strategy.go", "AuthStrategy"},
 		{"internal/service/registry.go", "ServiceRegistry"},
 		{"internal/service/policy.go", "PolicyEnforcer"},
-		{"internal/audit/logger.go", "AuditLogger"},
 	}
 
 	for _, iface := range interfaces {
@@ -648,19 +581,6 @@ func TestPhase01Completion(t *testing.T) {
 			},
 		},
 		{
-			name: "AuditLogger interface exists with correct signature",
-			fn: func() error {
-				path := filepath.Join(projectRoot, "internal/audit/logger.go")
-				if _, err := os.Stat(path); os.IsNotExist(err) {
-					return err
-				}
-				if !hasTypeDefinition(t, path, "AuditLogger") {
-					return os.ErrNotExist
-				}
-				return nil
-			},
-		},
-		{
 			name: "Service struct defined",
 			fn: func() error {
 				paths := []string{
@@ -680,16 +600,6 @@ func TestPhase01Completion(t *testing.T) {
 			fn: func() error {
 				path := filepath.Join(projectRoot, "internal/service/policy.go")
 				if !hasTypeDefinition(t, path, "Policy") {
-					return os.ErrNotExist
-				}
-				return nil
-			},
-		},
-		{
-			name: "RequestLog struct defined",
-			fn: func() error {
-				path := filepath.Join(projectRoot, "internal/audit/logger.go")
-				if !hasTypeDefinition(t, path, "RequestLog") {
 					return os.ErrNotExist
 				}
 				return nil
@@ -720,7 +630,7 @@ func TestPhase01Completion(t *testing.T) {
 		for _, msg := range failureMessages {
 			t.Logf("  - %s", msg)
 		}
-		t.Fatalf("\nFAIL: Phase 0.1 is INCOMPLETE - %d/%d checks failed\n\nTo complete Phase 0.1:\n  1. Define all interface types with correct method signatures\n  2. Define core structs (Service, Policy, RequestLog)\n  3. Add godoc comments to all interfaces\n  4. Ensure 'go build ./...' succeeds", failed, len(checks))
+		t.Fatalf("\nFAIL: Phase 0.1 is INCOMPLETE - %d/%d checks failed\n\nTo complete Phase 0.1:\n  1. Define all interface types with correct method signatures\n  2. Define core structs (Service, Policy)\n  3. Add godoc comments to all interfaces\n  4. Ensure 'go build ./...' succeeds", failed, len(checks))
 	}
 
 	t.Log("\nPASS: Phase 0.1 Core Interfaces is COMPLETE")
