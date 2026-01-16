@@ -26,7 +26,8 @@ go.work
 *.key
 *.pem
 *.crt
-secrets/
+/secrets/
+# Note: /secrets/ with leading slash to not match internal/secrets/
 
 # IDE directories
 .vscode/
