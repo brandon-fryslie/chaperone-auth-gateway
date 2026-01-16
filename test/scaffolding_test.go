@@ -97,7 +97,6 @@ func testDirectoryStructureComplete(t *testing.T, projectRoot string) {
 		"internal/errors",
 		"internal/log",
 		"internal/config",
-		"internal/context",
 		"internal/shutdown",
 
 		// Feature packages (empty until later phases)
