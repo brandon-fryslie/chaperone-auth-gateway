@@ -62,6 +62,11 @@ func (l *Logger) LogRequest(r *http.Request) {
 	}
 	if len(authHeaders) > 0 {
 		args = append(args, "auth_headers", authHeaders)
+		// Warn about real credentials flowing through
+		log.Warn(ctx, "auth credentials detected in request - real credentials being transmitted",
+			"host", r.Host,
+			"header_count", len(authHeaders),
+		)
 	}
 
 	// Query parameters (optional)
