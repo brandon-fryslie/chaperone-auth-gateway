@@ -29,6 +29,7 @@ type RunConfig struct {
 	Args       []string `toml:"args"`        // Command arguments
 	EnvFile    string   `toml:"env_file"`    // Path to .env file (KEY=value format)
 	SocketPath string   `toml:"socket_path"` // Override default socket path
+	Stdin      string   `toml:"stdin"`       // "inherit", "file:/path", or "discard"
 	Stdout     string   `toml:"stdout"`      // "inherit", "file:/path", or "discard"
 	Stderr     string   `toml:"stderr"`      // "inherit", "file:/path", or "discard"
 	CAEnvVars  []string `toml:"ca_env_vars"` // CA cert environment variables to set (defaults to all standard vars)
@@ -138,7 +139,8 @@ func (c *Config) SetDefaults() {
 	// Default to Unix socket mode if neither socket nor port is configured
 	if c.Server.Socket == "" && c.Server.Port == 0 {
 		// Default: Unix socket mode for better security
-		c.Server.Socket = "/tmp/chaperone.sock"
+		// Include PID to allow multiple instances to run simultaneously
+		c.Server.Socket = fmt.Sprintf("/tmp/chaperone-%d.sock", os.Getpid())
 	}
 
 	// If port is explicitly set but socket is not, use TCP mode

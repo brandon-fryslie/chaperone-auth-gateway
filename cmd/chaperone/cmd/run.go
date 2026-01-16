@@ -71,7 +71,7 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		cliCommand = args[2:]
 	} else if len(args) > 1 {
 		// Invalid syntax: arguments without '--' separator
-		return fmt.Errorf("invalid syntax: extra arguments must be preceded by '--' separator\n"+
+		return fmt.Errorf("invalid syntax: extra arguments must be preceded by '--' separator\n" +
 			"Usage: chaperone run <service> -- <command> <arg1> ...",
 		)
 	}
@@ -299,8 +299,13 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	)
 	envBuilder.SetCAEnvVars(caCertPath, svc.Run.CAEnvVars)
 
-	// Create FD config
-	fdConfig, err := run.NewFDConfig(svc.Run.Stdout, svc.Run.Stderr)
+	// Create FD config with stdin, stdout, stderr
+	// Default stdin to "inherit" for interactive applications
+	stdinMode := "inherit"
+	if svc.Run.Stdin != "" {
+		stdinMode = svc.Run.Stdin
+	}
+	fdConfig, err := run.NewFDConfig(stdinMode, svc.Run.Stdout, svc.Run.Stderr)
 	if err != nil {
 		shutdownMgr.Shutdown(5 * time.Second)
 		return fmt.Errorf("failed to create FD config: %w", err)

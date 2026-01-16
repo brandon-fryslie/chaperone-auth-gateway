@@ -10,15 +10,21 @@ import (
 
 // FDConfig specifies how to handle file descriptors for a child process.
 type FDConfig struct {
+	Stdin      io.Reader // Where to read stdin from
 	Stdout     io.Writer // Where to send stdout
 	Stderr     io.Writer // Where to send stderr
 	closed     bool
 	closeMutex sync.Mutex
 }
 
-// NewFDConfig creates a FDConfig from stdout/stderr mode strings.
-// Modes: "inherit" (use parent's FD), "file:/path" (write to file), "discard" (send to /dev/null)
-func NewFDConfig(stdoutMode, stderrMode string) (*FDConfig, error) {
+// NewFDConfig creates a FDConfig from stdin/stdout/stderr mode strings.
+// Modes: "inherit" (use parent's FD), "file:/path" (write/read to file), "discard" (send to /dev/null)
+func NewFDConfig(stdinMode, stdoutMode, stderrMode string) (*FDConfig, error) {
+	stdin, err := parseFDInputMode(stdinMode, os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("stdin: %w", err)
+	}
+
 	stdout, err := parseFDMode(stdoutMode, os.Stdout)
 	if err != nil {
 		return nil, fmt.Errorf("stdout: %w", err)
@@ -30,6 +36,7 @@ func NewFDConfig(stdoutMode, stderrMode string) (*FDConfig, error) {
 	}
 
 	return &FDConfig{
+		Stdin:  stdin,
 		Stdout: stdout,
 		Stderr: stderr,
 	}, nil
@@ -63,6 +70,34 @@ func parseFDMode(mode string, defaultWriter io.Writer) (io.Writer, error) {
 	}
 }
 
+// parseFDInputMode parses a file descriptor mode string and returns the appropriate reader.
+func parseFDInputMode(mode string, defaultReader io.Reader) (io.Reader, error) {
+	switch {
+	case mode == "" || mode == "inherit":
+		return defaultReader, nil
+
+	case mode == "discard":
+		return io.NopCloser(strings.NewReader("")), nil
+
+	case strings.HasPrefix(mode, "file:"):
+		path := mode[5:] // Strip "file:" prefix
+		if path == "" {
+			return nil, fmt.Errorf("file path cannot be empty")
+		}
+
+		// Open file in read-only mode
+		f, err := os.OpenFile(path, os.O_RDONLY, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file %q: %w", path, err)
+		}
+
+		return f, nil
+
+	default:
+		return nil, fmt.Errorf("invalid mode %q: must be 'inherit', 'discard', or 'file:/path'", mode)
+	}
+}
+
 // Close closes any file handles opened by this FDConfig.
 // Safe to call multiple times.
 func (fc *FDConfig) Close() error {
@@ -75,15 +110,25 @@ func (fc *FDConfig) Close() error {
 
 	var errs []error
 
-	// Track which closers we've already closed (in case stdout and stderr point to the same file)
+	// Track which closers we've already closed (in case multiple FDs point to the same file)
 	closedFiles := make(map[io.Closer]bool)
+
+	// Close stdin if it's a file
+	if closer, ok := fc.Stdin.(io.Closer); ok && fc.Stdin != os.Stdin {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("stdin: %w", err))
+		}
+		closedFiles[closer] = true
+	}
 
 	// Close stdout if it's a file
 	if closer, ok := fc.Stdout.(io.Closer); ok && fc.Stdout != os.Stdout {
-		if err := closer.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("stdout: %w", err))
+		if !closedFiles[closer] {
+			if err := closer.Close(); err != nil {
+				errs = append(errs, fmt.Errorf("stdout: %w", err))
+			}
+			closedFiles[closer] = true
 		}
-		closedFiles[closer] = true
 	}
 
 	// Close stderr if it's a file and we haven't already closed it

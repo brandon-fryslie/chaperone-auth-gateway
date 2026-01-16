@@ -104,7 +104,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("  %sUsing TCP port (consider Unix socket for better isolation)\n", iconWarn)
 		recommendations = append(recommendations,
-			"Use Unix socket mode for better permission isolation: --socket /path/to/chaperone.sock")
+			"Use Unix socket mode for better permission isolation: --socket /path/to/socket")
 	}
 	fmt.Println()
 

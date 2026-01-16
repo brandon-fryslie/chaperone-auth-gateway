@@ -3,6 +3,7 @@ package test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bmf/chaperone/internal/config"
@@ -331,72 +332,50 @@ func testValidateServiceHostPattern(t *testing.T) {
 // - SetDefaults() sets Server.Address to 127.0.0.1 when port is explicitly set
 // - SetDefaults() does not override explicitly set Address
 func testDefaultServerAddress(t *testing.T) {
-	// Test: Default is Unix socket mode (no address/port)
+	// Default is Unix socket mode with PID-based path
 	cfg := &config.Config{}
 	cfg.SetDefaults()
 
-	// With Unix socket default, Address is not set
-	if cfg.Server.Socket != "/tmp/chaperone.sock" {
-		t.Errorf("SetDefaults() should default to Unix socket mode, got socket: %s", cfg.Server.Socket)
+	if cfg.Server.Socket == "" || !strings.Contains(cfg.Server.Socket, "chaperone-") {
+		t.Errorf("expected PID-based socket path, got: %s", cfg.Server.Socket)
 	}
 
-	// Test: When port is explicitly set, Address defaults to 127.0.0.1
-	cfg = &config.Config{
-		Server: config.ServerConfig{
-			Port: 4010,
-		},
-	}
+	// When port is set, Address defaults to 127.0.0.1
+	cfg = &config.Config{Server: config.ServerConfig{Port: 4010}}
 	cfg.SetDefaults()
-
 	if cfg.Server.Address != "127.0.0.1" {
-		t.Errorf("SetDefaults() should set Server.Address to '127.0.0.1' when port is set, got: %s", cfg.Server.Address)
+		t.Errorf("expected 127.0.0.1, got: %s", cfg.Server.Address)
 	}
 
-	// Test: Explicit value is not overridden
-	cfg = &config.Config{
-		Server: config.ServerConfig{
-			Port:    4010,
-			Address: "0.0.0.0",
-		},
-	}
+	// Explicit values are preserved
+	cfg = &config.Config{Server: config.ServerConfig{Port: 4010, Address: "0.0.0.0"}}
 	cfg.SetDefaults()
-
 	if cfg.Server.Address != "0.0.0.0" {
-		t.Errorf("SetDefaults() should not override explicit Server.Address, got: %s", cfg.Server.Address)
+		t.Errorf("expected 0.0.0.0, got: %s", cfg.Server.Address)
 	}
-
-	t.Logf("SetDefaults() correctly handled Server.Address")
 }
 
 // testDefaultServerPort verifies:
 // - SetDefaults() defaults to Unix socket mode (port remains 0)
 // - SetDefaults() does not override explicitly set Port
 func testDefaultServerPort(t *testing.T) {
-	// Test: Default is Unix socket mode (port remains 0)
+	// Default is Unix socket mode (port remains 0)
 	cfg := &config.Config{}
 	cfg.SetDefaults()
 
-	// With Unix socket default, Port remains 0
 	if cfg.Server.Port != 0 {
-		t.Errorf("SetDefaults() should leave Server.Port as 0 in socket mode, got: %d", cfg.Server.Port)
+		t.Errorf("expected port 0 in socket mode, got: %d", cfg.Server.Port)
 	}
-	if cfg.Server.Socket != "/tmp/chaperone.sock" {
-		t.Errorf("SetDefaults() should default to Unix socket mode, got socket: %s", cfg.Server.Socket)
+	if cfg.Server.Socket == "" || !strings.Contains(cfg.Server.Socket, "chaperone-") {
+		t.Errorf("expected PID-based socket path, got: %s", cfg.Server.Socket)
 	}
 
-	// Test: Explicit value is not overridden
-	cfg = &config.Config{
-		Server: config.ServerConfig{
-			Port: 8080,
-		},
-	}
+	// Explicit port is preserved
+	cfg = &config.Config{Server: config.ServerConfig{Port: 8080}}
 	cfg.SetDefaults()
-
 	if cfg.Server.Port != 8080 {
-		t.Errorf("SetDefaults() should not override explicit Server.Port, got: %d", cfg.Server.Port)
+		t.Errorf("expected port 8080, got: %d", cfg.Server.Port)
 	}
-
-	t.Logf("SetDefaults() correctly handled Server.Port")
 }
 
 // testDefaultLoggingConfig verifies:

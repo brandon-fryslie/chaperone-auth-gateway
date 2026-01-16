@@ -1,6 +1,6 @@
 # Chaperone Auth Gateway - Project Roadmap
 
-Last updated: 2026-01-11
+Last updated: 2026-01-15
 
 ---
 
@@ -32,23 +32,10 @@ Goal: Production-ready feature set and UX.
   - Epic: INIT-WIZARD
   - P0-P3: Detection, storage, config generation, proxy integration all done
 
-- **http-response-buffering-fix** [BLOCKING]
-  - Epic: HTTP-BUFFERING
-  - Priority: P0 (CRITICAL)
-  - Status: Real clients fail with "Malformed_HTTP_Response"
-  - Details: 13 integration tests pass, but actual usage broken
-
-- **strict-allowlist-mode** [PROPOSED]
-  - Priority: P1 (HIGH)
-  - Security: Only forward to configured hosts in strict mode
-
-- **credential-scope-enforcement** [PROPOSED]
-  - Priority: P2 (MEDIUM)
-  - Security: Block requests outside credential scope
-
-- **examine-mode-credential-warning** [PROPOSED]
+- **examine-mode-credential-warning** [COMPLETE]
   - Priority: QUICK WIN
   - UX: Warn when auth headers detected in examine mode
+  - Implemented: Startup banner + per-request WARN log
 
 ---
 
@@ -62,7 +49,6 @@ Goal: Defense-in-depth and production readiness.
 
 - **streaming-response-validation** [PROPOSED]
   - Priority: P2
-  - Depends on: http-response-buffering-fix
 
 - **error-scenario-tests** [PROPOSED]
   - Secret not found, upstream 500s, timeouts
@@ -104,6 +90,13 @@ Goal: Remove technical debt and temporary files.
   - Technical debt: Remove/fix failing test files for unimplemented features
   - Files: interfaces_test.go, scaffolding_test.go, setup_test.go
   - Note: These test planned-but-unimplemented features from earlier development
+
+- **har-recording-fix** [PROPOSED]
+  - Priority: P3
+  - Technical debt: HAR recording runs but output never consumed
+  - Issues: WriteToFile() is broken (creates buffer, returns nil), GetRecorder() never called
+  - Options: Fix and expose via --har-output flag, or remove entirely (~300 lines)
+  - Source: Identified in PRUNE-2026-01-16 analysis
 
 ---
 

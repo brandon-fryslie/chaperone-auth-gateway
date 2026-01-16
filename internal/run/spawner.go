@@ -15,8 +15,7 @@ type ProcessManager struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	exitCode int
-	exited   bool
-	waitDone chan struct{}
+	waitDone chan struct{} // closed when process exits
 }
 
 // NewProcessManager creates a new process manager.
@@ -34,6 +33,7 @@ func NewProcessManager(ctx context.Context, command string, args []string, env [
 	cmd.Env = env
 
 	// Set up file descriptors
+	cmd.Stdin = fdConfig.Stdin
 	cmd.Stdout = fdConfig.Stdout
 	cmd.Stderr = fdConfig.Stderr
 
@@ -70,7 +70,6 @@ func (pm *ProcessManager) waitForExit() {
 	defer close(pm.waitDone)
 
 	err := pm.cmd.Wait()
-	pm.exited = true
 
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -91,8 +90,14 @@ func (pm *ProcessManager) Wait() int {
 }
 
 // IsRunning returns true if the process is still running.
+// Uses non-blocking channel check - idiomatic Go pattern.
 func (pm *ProcessManager) IsRunning() bool {
-	return !pm.exited
+	select {
+	case <-pm.waitDone:
+		return false
+	default:
+		return true
+	}
 }
 
 // Signal sends a signal to the child process.
@@ -107,8 +112,11 @@ func (pm *ProcessManager) Signal(sig syscall.Signal) error {
 // GracefulStop attempts to gracefully stop the child process.
 // Sends SIGTERM, waits up to timeout, then sends SIGKILL if needed.
 func (pm *ProcessManager) GracefulStop(timeout time.Duration) error {
-	if pm.exited {
+	// Check if already exited using non-blocking channel check
+	select {
+	case <-pm.waitDone:
 		return nil // Already exited
+	default:
 	}
 
 	// Send SIGTERM

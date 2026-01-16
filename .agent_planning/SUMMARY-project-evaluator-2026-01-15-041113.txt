@@ -1,0 +1,20 @@
+Agent: project-evaluator | 2026-01-15-041113
+Scope: project/strict-allowlist-mode
+Completion: 0% | Gaps: 5 critical ambiguities | Test Quality: N/A (feature not started)
+Reused: 0 findings | Fresh: All findings
+Cache updated: None (feature-specific evaluation)
+Ambiguities: 5 found (CRITICAL: requirements missing, behavior undefined, security decisions needed)
+Workflow: PAUSE (5 questions need answers first)
+
+BLOCKER: User claims feature is "P1 from roadmap" but no such entry exists in ROADMAP.md, PROJECT_SPEC.md, or SECURITY.md. Requirements must be clarified before implementation.
+
+Key findings:
+- Transparent tunnel currently allows all non-configured domains (handlers.go:86-87)
+- Service registry and host matching logic exist and work correctly
+- Implementation estimated at 6 hours AFTER requirements clarified
+- 5 critical ambiguities block implementation (see EVALUATION-*.md Question 1-5)
+
+Files ready for implementation (once unblocked):
+- internal/config/config.go (add StrictMode flag)
+- internal/proxy/handlers.go (modify connectHandler)
+- test/integration/strict_mode_test.go (new tests)

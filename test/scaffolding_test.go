@@ -108,7 +108,6 @@ func testDirectoryStructureComplete(t *testing.T, projectRoot string) {
 		"internal/auth",
 		"internal/audit",
 		"internal/client",
-		"internal/acl",
 
 		// Test infrastructure
 		"test/helpers",

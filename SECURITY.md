@@ -64,6 +64,39 @@ We don't pester you about security. Run `chaperone check` to see what you can im
 
 ---
 
+### Layer 2.5: Strict Allowlist Mode
+
+**What:** Chaperone ONLY forwards requests to explicitly configured services. Non-configured domains are immediately rejected with connection refused.
+
+**Why:** Provides defense-in-depth by ensuring applications can ONLY access services you've explicitly configured. This prevents:
+- Accidental credential leakage to unintended hosts
+- Applications bypassing Chaperone for unconfigured services
+- Data exfiltration attempts to attacker-controlled domains
+
+**How it works:**
+1. Each service must be explicitly configured in `chaperone.toml`
+2. Requests to configured services are MITM'd and credentials injected
+3. Requests to non-configured domains are **rejected** (connection refused)
+4. All rejected connections are audit logged with `domain_blocked` event
+
+**Example:**
+```toml
+# Only api.openai.com is configured
+[[service]]
+hosts = ["api.openai.com"]
+auth = "bearer"
+secret = "env:OPENAI_API_KEY"
+```
+
+Result:
+- ✅ `https://api.openai.com/v1/chat/completions` → allowed, credentials injected
+- ❌ `https://api.anthropic.com/v1/messages` → **rejected** (not configured)
+- ❌ `https://attacker.com/exfiltrate` → **rejected** (not configured)
+
+**Status:** ✅ Implemented (strict allowlist enforced)
+
+---
+
 ### Layer 3: User/Permission Isolation
 
 **What:** Chaperone runs as a dedicated unprivileged user. Credential files are only readable by that user. Communication via Unix socket with group permissions.
@@ -133,6 +166,7 @@ Chaperone provides comprehensive audit logging for all security-relevant events.
 | `request_dropped` | Access Control | Request blocked by drop pattern |
 | `auth_header_stripped` | Account Management | Known auth headers removed for security |
 | `placeholder_mismatch` | Access Control | Placeholder token mismatch - request passed through |
+| `domain_blocked` | Access Control | Non-configured domain rejected by strict allowlist mode |
 
 ### AU-3 Field Mapping
 

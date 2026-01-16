@@ -36,7 +36,7 @@ var injectCmd = &cobra.Command{
 When called without arguments, serves all services from config.
 When called with a service name, serves only that specific service.
 
-By default, Chaperone listens on a Unix socket (/tmp/chaperone.sock) for better security.
+By default, Chaperone listens on a Unix socket (auto-generated path) for better security.
 Use --http flag to enable TCP mode instead.
 
 Examples:
@@ -51,7 +51,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(injectCmd)
-	injectCmd.Flags().StringVar(&socketPath, "socket", "", "Unix socket path to listen on (overrides default /tmp/chaperone.sock)")
+	injectCmd.Flags().StringVar(&socketPath, "socket", "", "Unix socket path (default: auto-generated)")
 	injectCmd.Flags().BoolVar(&httpMode, "http", false, "Use HTTP/TCP mode instead of Unix socket")
 	injectCmd.Flags().IntVar(&httpPort, "port", 0, "Port to listen on (implies --http, default 4010)")
 	injectCmd.Flags().StringVar(&httpAddr, "addr", "", "Address to listen on (implies --http, default 127.0.0.1)")

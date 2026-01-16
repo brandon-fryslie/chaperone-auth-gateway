@@ -4,37 +4,43 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestNewFDConfig(t *testing.T) {
 	tests := []struct {
 		name       string
+		stdin      string
 		stdout     string
 		stderr     string
 		wantErr    bool
 		checkFiles bool // Whether to check that files were created
 	}{
 		{
-			name:    "inherit both",
+			name:    "inherit all",
+			stdin:   "inherit",
 			stdout:  "inherit",
 			stderr:  "inherit",
 			wantErr: false,
 		},
 		{
 			name:    "empty defaults to inherit",
+			stdin:   "",
 			stdout:  "",
 			stderr:  "",
 			wantErr: false,
 		},
 		{
-			name:    "discard both",
+			name:    "discard all",
+			stdin:   "discard",
 			stdout:  "discard",
 			stderr:  "discard",
 			wantErr: false,
 		},
 		{
 			name:       "file output",
+			stdin:      "inherit",
 			stdout:     "file:/tmp/test_stdout.log",
 			stderr:     "file:/tmp/test_stderr.log",
 			wantErr:    false,
@@ -42,24 +48,35 @@ func TestNewFDConfig(t *testing.T) {
 		},
 		{
 			name:    "mixed modes",
+			stdin:   "inherit",
 			stdout:  "inherit",
 			stderr:  "discard",
 			wantErr: false,
 		},
 		{
+			name:    "invalid stdin mode",
+			stdin:   "invalid",
+			stdout:  "inherit",
+			stderr:  "inherit",
+			wantErr: true,
+		},
+		{
 			name:    "invalid stdout mode",
+			stdin:   "inherit",
 			stdout:  "invalid",
 			stderr:  "inherit",
 			wantErr: true,
 		},
 		{
 			name:    "invalid stderr mode",
+			stdin:   "inherit",
 			stdout:  "inherit",
 			stderr:  "invalid",
 			wantErr: true,
 		},
 		{
 			name:    "empty file path",
+			stdin:   "inherit",
 			stdout:  "file:",
 			stderr:  "inherit",
 			wantErr: true,
@@ -74,7 +91,7 @@ func TestNewFDConfig(t *testing.T) {
 				defer os.Remove("/tmp/test_stderr.log")
 			}
 
-			config, err := NewFDConfig(tt.stdout, tt.stderr)
+			config, err := NewFDConfig(tt.stdin, tt.stdout, tt.stderr)
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("NewFDConfig() expected error, got nil")
@@ -87,6 +104,9 @@ func TestNewFDConfig(t *testing.T) {
 				return
 			}
 
+			if config.Stdin == nil {
+				t.Error("Stdin is nil")
+			}
 			if config.Stdout == nil {
 				t.Error("Stdout is nil")
 			}
@@ -199,6 +219,7 @@ func TestFDConfig_Close(t *testing.T) {
 	}
 
 	config := &FDConfig{
+		Stdin:  os.Stdin,
 		Stdout: f1,
 		Stderr: f2,
 	}
@@ -220,26 +241,28 @@ func TestFDConfig_Close(t *testing.T) {
 }
 
 func TestFDConfig_CloseInheritedFDs(t *testing.T) {
-	// Config with inherited FDs (os.Stdout/Stderr)
+	// Config with inherited FDs (os.Stdin/Stdout/Stderr)
 	config := &FDConfig{
+		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 	}
 
-	// Close should not close os.Stdout/Stderr
+	// Close should not close os.Stdin/Stdout/Stderr
 	if err := config.Close(); err != nil {
 		t.Errorf("Close() error: %v", err)
 	}
 
-	// Verify os.Stdout still works
-	if _, err := os.Stdout.Write([]byte("")); err != nil {
-		t.Error("os.Stdout should still be open")
+	// Verify os.Stdin still works
+	if _, err := os.Stdin.Read(make([]byte, 0)); err != nil {
+		t.Error("os.Stdin should still be open")
 	}
 }
 
 func TestFDConfig_CloseDiscard(t *testing.T) {
 	// Config with discard (io.Discard doesn't need closing)
 	config := &FDConfig{
+		Stdin:  io.NopCloser(strings.NewReader("")),
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}

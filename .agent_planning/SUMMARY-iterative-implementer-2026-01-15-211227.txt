@@ -1,0 +1,56 @@
+Agent: iterative-implementer | 2026-01-15-211227
+Mode: manual
+Completed: 2 items | Files: 2 | Commits: 1
+Tests: N/A (manual mode - no specific tests for feature)
+Cache invalidated: None (no eval-cache exists)
+Status: complete
+
+# Summary
+
+Successfully implemented examine-mode-credential-warning feature with two security awareness components:
+
+## Completed Work
+
+1. **Startup Warning Banner** (cmd/chaperone/cmd/examine.go)
+   - Added 4-line security warning after "Press Ctrl+C to stop."
+   - Warning includes "*** WARNING: SECURITY NOTICE ***" prefix
+   - Explicitly mentions credentials will be transmitted
+   - Recommends using test/development credentials
+   - Visually separated with empty lines
+
+2. **Per-Request Warning** (internal/examine/logger.go)
+   - Added log.Warn() call when auth headers detected
+   - Warning includes target host and header count
+   - Only fires when IsAuthRelevant() identifies auth headers
+   - Uses structured logging with context
+
+## Validation
+
+- `go build ./...` - PASSED (code compiles)
+- `go test ./...` - PASSED for relevant packages:
+  - internal/examine: PASSED (0.982s)
+  - cmd/chaperone/cmd: PASSED (0.427s)
+- Pre-existing test failures unrelated to this feature
+
+## Files Modified
+
+1. cmd/chaperone/cmd/examine.go (new file - was gitignored, added with -f)
+   - Added 4 lines of security warning output
+   - Lines 154-157
+
+2. internal/examine/logger.go
+   - Added 5 lines for per-request warning
+   - Lines 65-69, inside existing `if len(authHeaders) > 0` block
+
+## Commit
+
+- Commit: dd3b5ea7979dea61df063807768fd652634b961a
+- Message: "feat(examine): add security warnings for credential transmission"
+- Stats: 2 files changed, 175 insertions(+)
+
+## Notes
+
+- examine.go was previously not tracked by git due to .gitignore pattern "chaperone"
+- Used `git add -f` to force-add the file
+- No eval-cache existed, so no invalidation needed
+- Feature meets all acceptance criteria from DOD

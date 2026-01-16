@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 func TestNewProcessManager(t *testing.T) {
 	fdConfig := &FDConfig{
+		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 	}
@@ -64,6 +66,7 @@ func TestNewProcessManager(t *testing.T) {
 
 func TestProcessManager_StartAndWait(t *testing.T) {
 	fdConfig := &FDConfig{
+		Stdin:  io.NopCloser(strings.NewReader("")),
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
@@ -128,6 +131,7 @@ func TestProcessManager_StartAndWait(t *testing.T) {
 
 func TestProcessManager_Signal(t *testing.T) {
 	fdConfig := &FDConfig{
+		Stdin:  io.NopCloser(strings.NewReader("")),
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
@@ -178,6 +182,7 @@ func TestProcessManager_Signal(t *testing.T) {
 
 func TestProcessManager_GracefulStop(t *testing.T) {
 	fdConfig := &FDConfig{
+		Stdin:  io.NopCloser(strings.NewReader("")),
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
@@ -271,6 +276,7 @@ func TestProcessManager_Cleanup(t *testing.T) {
 	}
 
 	fdConfig := &FDConfig{
+		Stdin:  io.NopCloser(strings.NewReader("")),
 		Stdout: f,
 		Stderr: f,
 	}
