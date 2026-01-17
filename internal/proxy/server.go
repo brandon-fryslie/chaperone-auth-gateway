@@ -205,7 +205,8 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 // It does NOT inject credentials or alter requests/responses.
 // This mode is used by 'chaperone examine' to help users discover how authentication
 // credentials are passed in requests.
-func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger) *Server {
+// If recorder is provided, it will capture traffic in HAR format.
+func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger, rec *recorder.Recorder) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -214,6 +215,7 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 		config:      cfg,
 		logger:      logger,
 		shutdownMgr: shutdownMgr,
+		recorder:    rec,
 	}
 
 	// Create goproxy server
@@ -234,6 +236,12 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 
 	// Configure response handler - log ALL responses
 	proxy.OnResponse().DoFunc(examineResponseHandler(examineLogger))
+
+	// Add HAR recording if recorder provided
+	if rec != nil {
+		proxy.OnRequest().DoFunc(recordRequestHandler(rec))
+		proxy.OnResponse().DoFunc(recordResponseHandler(rec))
+	}
 
 	s.proxy = proxy
 
