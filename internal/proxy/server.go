@@ -229,13 +229,13 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	certStore := NewGoproxyCertStore(certCache)
 
 	// Configure CONNECT handler - MITM ALL connections (no filtering)
-	proxy.OnRequest().HandleConnectFunc(examineConnectHandler(certStore, logger))
+	proxy.OnRequest().HandleConnectFunc(examine.ConnectHandler(certStore, logger))
 
 	// Configure request handler - log ALL requests
-	proxy.OnRequest().DoFunc(examineRequestHandler(examineLogger))
+	proxy.OnRequest().DoFunc(examine.RequestHandler(examineLogger))
 
 	// Configure response handler - log ALL responses
-	proxy.OnResponse().DoFunc(examineResponseHandler(examineLogger))
+	proxy.OnResponse().DoFunc(examine.ResponseHandler(examineLogger))
 
 	// Add HAR recording if recorder provided
 	if rec != nil {
@@ -262,12 +262,9 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	return s
 }
 
-// FindingCallback is called when a new finding is discovered in init mode.
-type FindingCallback func(host string, finding *chaperoneInit.Finding)
-
 // NewInitProxy creates a passthrough MITM proxy for init mode credential discovery.
 // It analyzes requests to detect authentication patterns and generate config.
-func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, detector *chaperoneInit.Detector, evidence *chaperoneInit.Evidence, onFinding FindingCallback) *Server {
+func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, detector *chaperoneInit.Detector, evidence *chaperoneInit.Evidence, onFinding chaperoneInit.FindingCallback) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -289,13 +286,13 @@ func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown
 	certStore := NewGoproxyCertStore(certCache)
 
 	// Configure CONNECT handler - MITM ALL connections (no filtering)
-	proxy.OnRequest().HandleConnectFunc(initConnectHandler(certStore, logger))
+	proxy.OnRequest().HandleConnectFunc(chaperoneInit.ConnectHandler(certStore, logger))
 
 	// Configure request handler - analyze ALL requests
-	proxy.OnRequest().DoFunc(initRequestHandler(detector, evidence, onFinding))
+	proxy.OnRequest().DoFunc(chaperoneInit.RequestHandler(detector, evidence, onFinding))
 
 	// Configure response handler - no-op for now
-	proxy.OnResponse().DoFunc(initResponseHandler())
+	proxy.OnResponse().DoFunc(chaperoneInit.ResponseHandler())
 
 	s.proxy = proxy
 

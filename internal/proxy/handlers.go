@@ -12,8 +12,6 @@ import (
 
 	"github.com/bmf/chaperone/internal/audit"
 	"github.com/bmf/chaperone/internal/auth"
-	"github.com/bmf/chaperone/internal/examine"
-	chaperoneInit "github.com/bmf/chaperone/internal/init"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/recorder"
 	"github.com/bmf/chaperone/internal/secrets"
@@ -225,7 +223,6 @@ func dropHandler(registry service.ServiceRegistry, auditLogger *audit.Logger, lo
 		return r, nil
 	}
 }
-
 
 // securityStripAuthHandler creates a handler that ALWAYS strips known auth headers
 // from requests to configured services. This is a security measure to prevent
@@ -656,123 +653,6 @@ func recordResponseHandler(rec *recorder.Recorder) func(*http.Response, *goproxy
 
 		log.Info(reqCtx, "request completed", logArgs...)
 
-		return resp
-	}
-}
-
-// examineConnectHandler creates a CONNECT handler that MITMs ALL connections for examine mode.
-// Unlike the normal connectHandler, this always MITMs regardless of service registry configuration.
-func examineConnectHandler(certStore *GoproxyCertStore, logger *slog.Logger) func(string, *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
-	return func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
-		// Add request ID to context for logging
-		reqCtx := log.WithRequestID(ctx.Req.Context())
-		ctx.Req = ctx.Req.WithContext(reqCtx)
-
-		log.Debug(reqCtx, "examine: MITM connection", "host", host)
-
-		// Create TLS config function that generates certificates per hostname
-		tlsConfigFunc := func(host string, ctx *goproxy.ProxyCtx) (*tls.Config, error) {
-			cert, err := certStore.Fetch(host, nil)
-			if err != nil {
-				log.Error(reqCtx, "failed to get certificate for MITM", err, "host", host)
-				return nil, err
-			}
-
-			return &tls.Config{
-				Certificates: []tls.Certificate{*cert},
-				MinVersion:   tls.VersionTLS12,
-			}, nil
-		}
-
-		return &goproxy.ConnectAction{
-			Action:    goproxy.ConnectMitm,
-			TLSConfig: tlsConfigFunc,
-		}, host
-	}
-}
-
-// examineRequestHandler creates a handler for examine mode that logs requests without modifying them.
-func examineRequestHandler(examineLogger *examine.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		// Log the request to help user discover auth patterns
-		examineLogger.LogRequest(r)
-
-		// Pass through unchanged - no modification
-		return r, nil
-	}
-}
-
-// examineResponseHandler creates a handler for examine mode that logs responses without modifying them.
-func examineResponseHandler(examineLogger *examine.Logger) func(*http.Response, *goproxy.ProxyCtx) *http.Response {
-	return func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-		// Log the response to help user discover auth patterns
-		examineLogger.LogResponse(resp)
-
-		// Pass through unchanged - no modification
-		return resp
-	}
-}
-
-// initConnectHandler creates a CONNECT handler that MITMs ALL connections for init mode.
-// Similar to examineConnectHandler, this always MITMs to analyze traffic for auth discovery.
-func initConnectHandler(certStore *GoproxyCertStore, logger *slog.Logger) func(string, *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
-	return func(host string, ctx *goproxy.ProxyCtx) (*goproxy.ConnectAction, string) {
-		reqCtx := log.WithRequestID(ctx.Req.Context())
-		ctx.Req = ctx.Req.WithContext(reqCtx)
-
-		log.Debug(reqCtx, "init: MITM connection", "host", host)
-
-		tlsConfigFunc := func(host string, ctx *goproxy.ProxyCtx) (*tls.Config, error) {
-			cert, err := certStore.Fetch(host, nil)
-			if err != nil {
-				log.Error(reqCtx, "failed to get certificate for MITM", err, "host", host)
-				return nil, err
-			}
-
-			return &tls.Config{
-				Certificates: []tls.Certificate{*cert},
-				MinVersion:   tls.VersionTLS12,
-			}, nil
-		}
-
-		return &goproxy.ConnectAction{
-			Action:    goproxy.ConnectMitm,
-			TLSConfig: tlsConfigFunc,
-		}, host
-	}
-}
-
-// initRequestHandler creates a handler for init mode that analyzes requests for auth patterns.
-func initRequestHandler(detector *chaperoneInit.Detector, evidence *chaperoneInit.Evidence, onFinding FindingCallback) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		// Get hosts before analysis to track new findings
-		hostsBefore := len(evidence.GetAllHosts())
-
-		// Analyze request for auth patterns
-		detector.AnalyzeRequest(r)
-
-		// Check if this is a new finding we should report
-		host := r.Host
-		if h, _, err := net.SplitHostPort(host); err == nil {
-			host = h
-		}
-
-		// If we found something new for this host, report it
-		if onFinding != nil {
-			topFinding := evidence.GetTopFinding(host)
-			if topFinding != nil && len(evidence.GetAllHosts()) > hostsBefore {
-				onFinding(host, topFinding)
-			}
-		}
-
-		// Pass through unchanged
-		return r, nil
-	}
-}
-
-// initResponseHandler creates a no-op response handler for init mode.
-func initResponseHandler() func(*http.Response, *goproxy.ProxyCtx) *http.Response {
-	return func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
 		return resp
 	}
 }
