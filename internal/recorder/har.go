@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -289,7 +290,12 @@ func (r *Recorder) WriteToFile(filename string) error {
 		return fmt.Errorf("failed to indent JSON: %w", err)
 	}
 
-	return nil // Caller should write the buffer to file
+	// Write to file with 0600 permissions (owner read/write only)
+	if err := os.WriteFile(filename, buf.Bytes(), 0600); err != nil {
+		return fmt.Errorf("failed to write HAR file: %w", err)
+	}
+
+	return nil
 }
 
 // String returns the HAR archive as a formatted JSON string
