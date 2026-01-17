@@ -6,15 +6,12 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/log"
-	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/orchestrate"
-	"github.com/bmf/chaperone/internal/proxy"
 	"github.com/bmf/chaperone/internal/run"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
@@ -152,30 +149,10 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return logFile.Close()
 	})
 
-	// Create ephemeral CA directory
-	ephemeralCADir := fmt.Sprintf("/tmp/chaperone-ca-%d", os.Getpid())
-	if err := os.MkdirAll(ephemeralCADir, 0700); err != nil {
-		return fmt.Errorf("failed to create ephemeral CA directory: %w", err)
-	}
-
-	// Register cleanup callback to delete CA directory on exit
-	shutdownMgr.Register(func(ctx context.Context) error {
-		log.Info(ctx, "cleaning up ephemeral CA directory", "path", ephemeralCADir)
-		return os.RemoveAll(ephemeralCADir)
-	})
-
-	caCertPath := filepath.Join(ephemeralCADir, "ca-cert.pem")
-	caKeyPath := filepath.Join(ephemeralCADir, "ca-key.pem")
-
-	log.Info(ctx, "generating ephemeral CA certificate",
-		"ca_dir", ephemeralCADir,
-		"ca_cert", caCertPath,
-	)
-
-	// Generate fresh CA (LoadOrGenerateCA will generate if files don't exist)
-	ca, err := mitm.LoadOrGenerateCA(caKeyPath, caCertPath)
+	// Initialize ephemeral CA with cleanup
+	ca, caKeyPath, caCertPath, err := orchestrate.InitializeEphemeralCA(ctx, os.Getpid(), shutdownMgr)
 	if err != nil {
-		return fmt.Errorf("failed to generate ephemeral CA: %w", err)
+		return err
 	}
 
 	// Use orchestrate.Setup() for shared initialization logic
@@ -192,17 +169,7 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create and start proxy server
-	proxyServer := proxy.NewWithMITM(
-		cfg,
-		slog.Default(),
-		shutdownMgr,
-		result.ServiceRegistry,
-		result.CertCache,
-		&proxy.MITMOptions{
-			SecretRegistry: result.SecretRegistry,
-			AuthRegistry:   result.AuthRegistry,
-		},
-	)
+	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result)
 
 	log.Info(ctx, "starting proxy server", "socket", socketPath)
 	if err := proxyServer.Start(); err != nil {

@@ -117,7 +117,6 @@ func TestAuthStrategyRegistry(t *testing.T) {
 	})
 }
 
-
 // TestBearerStrategy validates:
 // - Bearer token set correctly on request
 // - Empty secret returns error

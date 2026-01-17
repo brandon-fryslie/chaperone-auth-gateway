@@ -4,14 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/log"
-	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/orchestrate"
-	"github.com/bmf/chaperone/internal/proxy"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
 )
@@ -133,39 +130,15 @@ func runInject(cmd *cobra.Command, args []string) error {
 	shutdownMgr := shutdown.NewManager(slog.Default())
 
 	// Initialize CA for MITM
-	caDir, caKeyPath, caCertPath, err := getCAPath()
+	_, caKeyPath, caCertPath, err := getCAPath()
 	if err != nil {
 		return fmt.Errorf("failed to get CA path: %w", err)
 	}
 
-	// Ensure CA directory exists
-	if err := os.MkdirAll(caDir, 0700); err != nil {
-		return fmt.Errorf("failed to create CA directory: %w", err)
-	}
-
-	// Load or generate CA certificate
-	// Check if CA files already exist
-	_, keyErr := os.Stat(caKeyPath)
-	_, certErr := os.Stat(caCertPath)
-	isNewCA := keyErr != nil || certErr != nil
-
-	ca, err := mitm.LoadOrGenerateCA(caKeyPath, caCertPath)
+	// Load or generate CA certificate with appropriate logging
+	ca, _, err := orchestrate.InitializeCA(ctx, caKeyPath, caCertPath)
 	if err != nil {
-		return fmt.Errorf("failed to initialize CA: %w", err)
-	}
-
-	if isNewCA {
-		log.Info(ctx, "generated new CA certificate",
-			"cert_path", caCertPath,
-			"key_path", caKeyPath,
-		)
-		log.Info(ctx, "Trust this CA in your browser/system to avoid certificate warnings",
-			"cert_path", caCertPath,
-		)
-	} else {
-		log.Info(ctx, "loaded existing CA certificate",
-			"cert_path", caCertPath,
-		)
+		return err
 	}
 
 	// Use orchestrate.Setup() for shared initialization logic
@@ -181,28 +154,8 @@ func runInject(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create proxy server with MITM support
-	var proxyServer *proxy.Server
-	if len(result.ServiceRegistry.ListAll()) > 0 {
-		// Use MITM-enabled proxy if services are configured
-		// Pass registries via options to enable authentication
-		proxyServer = proxy.NewWithMITM(
-			cfg,
-			slog.Default(),
-			shutdownMgr,
-			result.ServiceRegistry,
-			result.CertCache,
-			&proxy.MITMOptions{
-				SecretRegistry: result.SecretRegistry,
-				AuthRegistry:   result.AuthRegistry,
-			},
-		)
-		log.Info(ctx, "proxy server created with MITM support and authentication")
-	} else {
-		// Use transparent proxy if no services configured
-		proxyServer = proxy.New(cfg, slog.Default(), shutdownMgr)
-		log.Info(ctx, "proxy server created in transparent mode (no services configured)")
-	}
+	// Create proxy server with MITM support or transparent mode
+	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result)
 
 	// Start proxy server
 	if err := proxyServer.Start(); err != nil {

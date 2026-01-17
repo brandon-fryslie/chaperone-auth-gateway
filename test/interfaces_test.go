@@ -47,7 +47,6 @@ func TestCoreInterfaces(t *testing.T) {
 		testPolicyEnforcerInterface(t, projectRoot)
 	})
 
-
 	t.Run("core_structs_defined", func(t *testing.T) {
 		testCoreStructsDefined(t, projectRoot)
 	})
@@ -331,7 +330,6 @@ func testPolicyEnforcerInterface(t *testing.T, projectRoot string) {
 
 	t.Logf("PASS: PolicyEnforcer interface found with methods: %v", foundMethods)
 }
-
 
 // testCoreStructsDefined verifies core data structures are defined.
 //

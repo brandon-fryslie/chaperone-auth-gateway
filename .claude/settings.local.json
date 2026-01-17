@@ -7,7 +7,8 @@
       "Bash(go list:*)",
       "Bash(go test:*)",
       "Bash(go build:*)",
-      "Bash(./chaperone inject:*)"
+      "Bash(./chaperone inject:*)",
+      "Bash(bd create:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
