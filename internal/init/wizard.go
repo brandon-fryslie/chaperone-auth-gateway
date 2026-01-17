@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -56,22 +55,7 @@ func NewWizard(config WizardConfig) *Wizard {
 
 // PrintIntroduction displays the welcome message and overview.
 func (w *Wizard) PrintIntroduction() {
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "=== Welcome to Chaperone ===")
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "Chaperone is a local proxy that automatically attaches authentication")
-	fmt.Fprintln(w.writer, "credentials to your outgoing API requests. Your applications connect")
-	fmt.Fprintln(w.writer, "through Chaperone using standard proxy settings, and Chaperone injects")
-	fmt.Fprintln(w.writer, "the appropriate API keys before forwarding requests. This means your")
-	fmt.Fprintln(w.writer, "applications never have direct access to your API keys—they stay safely")
-	fmt.Fprintln(w.writer, "stored and managed by Chaperone.")
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "This wizard will:")
-	fmt.Fprintln(w.writer, "  • Detect which APIs your application calls and how they authenticate")
-	fmt.Fprintln(w.writer, "  • Let you select and configure each service")
-	fmt.Fprintln(w.writer, "  • Securely store your API credentials (Keychain, file, or .env)")
-	fmt.Fprintln(w.writer, "  • Generate a chaperone.toml configuration file")
-	fmt.Fprintln(w.writer, "")
+	printIntroduction(w.writer)
 }
 
 // Step1ConfigureProxy prompts for proxy configuration.
@@ -86,48 +70,26 @@ func (w *Wizard) Step1ConfigureProxy() (WizardConfig, error) {
 	fmt.Fprintln(w.writer, "\n=== Step 1: Configure Proxy ===")
 
 	// Address
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "The IP address where the proxy server will listen.")
-	fmt.Fprintf(w.writer, "Listen address [%s]: ", cfg.Address)
-	line, err := w.reader.ReadString('\n')
+	address, err := promptAddress(w.reader, w.writer, cfg.Address)
 	if err != nil {
 		return cfg, err
 	}
-	line = strings.TrimSpace(line)
-	if line != "" {
-		cfg.Address = line
-	}
+	cfg.Address = address
 
 	// Port
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "The port number for proxy connections.")
-	fmt.Fprintf(w.writer, "Listen port [%d]: ", cfg.Port)
-	line, err = w.reader.ReadString('\n')
+	port, err := promptPort(w.reader, w.writer, cfg.Port)
 	if err != nil {
 		return cfg, err
 	}
-	line = strings.TrimSpace(line)
-	if line != "" {
-		port, err := strconv.Atoi(line)
-		if err != nil {
-			return cfg, fmt.Errorf("invalid port: %w", err)
-		}
-		cfg.Port = port
-	}
+	cfg.Port = port
 
 	// Sentinel value
 	if cfg.SentinelValue == "" {
-		fmt.Fprintln(w.writer, "")
-		fmt.Fprintln(w.writer, "An exact string to search for in requests (100% confidence detection).")
-		fmt.Fprintf(w.writer, "Sentinel value (optional, press Enter to skip): ")
-		line, err = w.reader.ReadString('\n')
+		sentinel, err := promptSentinel(w.reader, w.writer)
 		if err != nil {
 			return cfg, err
 		}
-		line = strings.TrimSpace(line)
-		if line != "" {
-			cfg.SentinelValue = line
-		}
+		cfg.SentinelValue = sentinel
 	} else {
 		fmt.Fprintf(w.writer, "Using sentinel value: %s\n", cfg.SentinelValue)
 	}
@@ -156,28 +118,12 @@ func (w *Wizard) GetEvidence() *Evidence {
 
 // PrintDetectionInstructions prints instructions for detection mode.
 func (w *Wizard) PrintDetectionInstructions() {
-	fmt.Fprintln(w.writer, "\n=== Step 2: Detection Mode ===")
-	fmt.Fprintln(w.writer)
-	fmt.Fprintf(w.writer, "Proxy listening on http://%s:%d\n\n", w.config.Address, w.config.Port)
-	fmt.Fprintln(w.writer, "Configure your application to use this proxy:")
-	fmt.Fprintf(w.writer, "  export HTTP_PROXY=http://%s:%d\n", w.config.Address, w.config.Port)
-	fmt.Fprintf(w.writer, "  export HTTPS_PROXY=http://%s:%d\n\n", w.config.Address, w.config.Port)
-	fmt.Fprintln(w.writer, "Send requests through the proxy. Detected auth patterns will appear below.")
-	fmt.Fprintln(w.writer, "Press Ctrl+C when done to proceed to review.")
-	fmt.Fprintln(w.writer)
-	fmt.Fprintln(w.writer, "---")
+	printDetectionInstructions(w.writer, w.config.Address, w.config.Port)
 }
 
 // ReportFinding prints a finding in real-time during detection.
 func (w *Wizard) ReportFinding(host string, finding *Finding) {
-	confidence := fmt.Sprintf("%.0f%%", finding.Confidence*100)
-	fmt.Fprintf(w.writer, "[%s] %s - %s: %s (confidence: %s)\n",
-		host,
-		finding.Heuristic,
-		finding.HeaderName,
-		redactValue(finding.HeaderValue),
-		confidence,
-	)
+	reportFinding(w.writer, host, finding)
 }
 
 // Step3ReviewFindings allows user to review and select detected hosts.
@@ -231,23 +177,15 @@ func (w *Wizard) Step3ReviewFindings() (string, error) {
 	}
 
 	// Prompt user to select one service
-	fmt.Fprintf(w.writer, "Enter the number of the service to configure (or 'q' to quit): ")
-	line, err := w.reader.ReadString('\n')
+	idx, err := promptServiceSelection(w.reader, w.writer, len(hosts))
 	if err != nil {
 		return "", err
 	}
-	line = strings.TrimSpace(line)
-
-	if line == "q" || line == "Q" {
-		return "", nil
+	if idx == -1 {
+		return "", nil // User quit
 	}
 
-	idx, err := strconv.Atoi(line)
-	if err != nil || idx < 1 || idx > len(hosts) {
-		return "", fmt.Errorf("invalid selection: %s", line)
-	}
-
-	return hosts[idx-1], nil
+	return hosts[idx], nil
 }
 
 // Step4ConfigureService prompts for service name and credential storage.
@@ -269,77 +207,66 @@ func (w *Wizard) Step4ConfigureService(ctx context.Context, host string) (*Gener
 	var serviceName string
 	var credentialRef string
 
-	if w.config.NonInteractive {
-		// Generate default service name from host
-		serviceName = generateServiceName(host)
-		// In non-interactive mode, we can't prompt for credential
-		return nil, fmt.Errorf("credential storage requires interactive mode")
-	}
-
-	// Prompt for service name
+	// Generate default service name
 	defaultName := generateServiceName(host)
-	fmt.Fprintln(w.writer, "A short identifier for this service in your config.")
-	fmt.Fprintf(w.writer, "Service name [%s]: ", defaultName)
-	line, err := w.reader.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	line = strings.TrimSpace(line)
-	if line == "" {
+
+	if w.config.NonInteractive {
+		// Use default service name
 		serviceName = defaultName
+
+		// P1: Default to file storage in non-interactive mode
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+
+		// Sanitize host for use as filename
+		sanitizedHost := strings.ReplaceAll(host, ".", "_")
+		storagePath := filepath.Join(homeDir, ".config", "chaperone", "secrets", sanitizedHost)
+
+		// Create parent directory
+		if err := os.MkdirAll(filepath.Dir(storagePath), 0700); err != nil {
+			return nil, fmt.Errorf("failed to create secrets directory: %w", err)
+		}
+
+		// In non-interactive mode, we can't prompt for credential value
+		// The credential must be provided via environment or config
+		// For now, create a placeholder that user can fill in later
+		credentialRef = fmt.Sprintf("file:%s", storagePath)
+
+		fmt.Fprintf(w.writer, "\nNon-interactive mode: credential reference set to %s\n", credentialRef)
+		fmt.Fprintf(w.writer, "You must manually write your credential to this file before running Chaperone.\n")
+		fmt.Fprintf(w.writer, "Example: echo 'your-api-key' > %s\n", storagePath)
 	} else {
-		serviceName = line
-	}
+		// Interactive mode: prompt for all details
 
-	// Prompt for credential value
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "The actual API key or token that Chaperone will inject into requests.")
-	fmt.Fprintf(w.writer, "Enter the API key/credential value: ")
-	line, err = w.reader.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	credentialValue := strings.TrimSpace(line)
-	if credentialValue == "" {
-		return nil, fmt.Errorf("credential value cannot be empty")
-	}
+		// Prompt for service name
+		name, err := promptServiceName(w.reader, w.writer, defaultName)
+		if err != nil {
+			return nil, err
+		}
+		serviceName = name
 
-	// Prompt for storage type
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "Where do you want to store this credential?")
-	fmt.Fprintln(w.writer, "  1. macOS Keychain - Most secure, uses macOS secure storage (recommended)")
-	fmt.Fprintln(w.writer, "  2. File - Stored with restricted permissions (~/.config/chaperone/secrets/)")
-	fmt.Fprintln(w.writer, "  3. .env file - Environment file in current directory")
-	fmt.Fprintf(w.writer, "\nChoice [1]: ")
+		// Prompt for credential value
+		credentialValue, err := promptCredentialValue(w.reader, w.writer)
+		if err != nil {
+			return nil, err
+		}
 
-	line, err = w.reader.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	line = strings.TrimSpace(line)
-	if line == "" {
-		line = "1"
-	}
+		// Prompt for storage type
+		storageType, err := promptStorageType(w.reader, w.writer)
+		if err != nil {
+			return nil, err
+		}
 
-	var storageType CredentialStorageType
-	switch line {
-	case "1":
-		storageType = StorageKeychain
-	case "2":
-		storageType = StorageFile
-	case "3":
-		storageType = StorageEnvFile
-	default:
-		return nil, fmt.Errorf("invalid storage choice: %s", line)
-	}
+		// Write credential and get reference
+		credentialRef, err = WriteCredential(storageType, serviceName, credentialValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to store credential: %w", err)
+		}
 
-	// Write credential and get reference
-	credentialRef, err = WriteCredential(storageType, serviceName, credentialValue)
-	if err != nil {
-		return nil, fmt.Errorf("failed to store credential: %w", err)
+		fmt.Fprintf(w.writer, "\nCredential stored: %s\n", credentialRef)
 	}
-
-	fmt.Fprintf(w.writer, "\nCredential stored: %s\n", credentialRef)
 
 	// Build generated service
 	svc := BuildGeneratedService(serviceName, findings, topFinding, credentialRef)
@@ -373,42 +300,17 @@ func (w *Wizard) Step5SaveConfig(svc *GeneratedService) error {
 	}
 
 	// Prompt for save location
-	fmt.Fprintln(w.writer, "Where do you want to save the configuration?")
-	fmt.Fprintf(w.writer, "  1. Default location (%s)\n", defaultPath)
-	fmt.Fprintln(w.writer, "  2. Current directory (./chaperone.toml)")
-	fmt.Fprintln(w.writer, "  3. Custom path")
-	fmt.Fprintln(w.writer, "  4. Print only (don't save)")
-	fmt.Fprintf(w.writer, "\nChoice [1]: ")
-
-	line, err := w.reader.ReadString('\n')
+	savePath, err := promptConfigPath(w.reader, w.writer, defaultPath)
 	if err != nil {
 		return err
 	}
-	line = strings.TrimSpace(line)
-	if line == "" {
-		line = "1"
-	}
 
-	var savePath string
-	switch line {
-	case "1":
-		savePath = defaultPath
-	case "2":
-		savePath = "chaperone.toml"
-	case "3":
-		fmt.Fprintf(w.writer, "Enter path: ")
-		line, err = w.reader.ReadString('\n')
-		if err != nil {
-			return err
-		}
-		savePath = strings.TrimSpace(line)
-	case "4":
+	if savePath == "" {
+		// Print-only mode
 		fmt.Fprintln(w.writer, "\nGenerated configuration:")
 		fmt.Fprintln(w.writer)
 		fmt.Fprintln(w.writer, tomlContent)
 		return nil
-	default:
-		return fmt.Errorf("invalid choice: %s", line)
 	}
 
 	return w.saveConfig(savePath, tomlContent)
@@ -462,25 +364,8 @@ level = "info"
 		fmt.Fprintf(w.writer, "\nConfiguration saved to: %s\n", path)
 	}
 
-	w.printNextSteps()
+	printNextSteps(w.writer, w.config.Address, w.config.Port)
 	return nil
-}
-
-// printNextSteps prints post-wizard instructions.
-func (w *Wizard) printNextSteps() {
-	fmt.Fprintln(w.writer, "\n=== Next Steps ===")
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "1. Trust the CA certificate in your browser/system:")
-	fmt.Fprintln(w.writer, "   chaperone ca-cert")
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "2. Start the proxy:")
-	fmt.Fprintln(w.writer, "   chaperone inject")
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "3. Configure your application to use the proxy:")
-	fmt.Fprintf(w.writer, "   export HTTP_PROXY=http://%s:%d\n", w.config.Address, w.config.Port)
-	fmt.Fprintf(w.writer, "   export HTTPS_PROXY=http://%s:%d\n", w.config.Address, w.config.Port)
-	fmt.Fprintln(w.writer, "")
-	fmt.Fprintln(w.writer, "Run 'chaperone init' again to add more services.")
 }
 
 // generateServiceName creates a default service name from a hostname.
@@ -501,12 +386,4 @@ func generateServiceName(host string) string {
 	name = strings.ReplaceAll(name, "-", "_")
 
 	return name
-}
-
-// redactValue partially hides a credential value for display.
-func redactValue(value string) string {
-	if len(value) <= 8 {
-		return "****"
-	}
-	return value[:4] + "..." + value[len(value)-4:]
 }
