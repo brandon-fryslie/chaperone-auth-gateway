@@ -3,24 +3,9 @@ package init
 import (
 	"regexp"
 	"strings"
-)
 
-// knownAuthHeaders is the list of headers commonly used for authentication.
-// This list is synchronized with internal/proxy/handlers.go:136-149.
-var knownAuthHeaders = map[string]bool{
-	"authorization":   true,
-	"x-api-key":       true,
-	"x-auth-token":    true,
-	"api-key":         true,
-	"apikey":          true,
-	"x-access-token":  true,
-	"x-token":         true,
-	"token":           true,
-	"bearer":          true,
-	"x-session-token": true,
-	"x-csrf-token":    true,
-	"x-xsrf-token":    true,
-}
+	"github.com/bmf/chaperone/internal/auth"
+)
 
 // authKeywords are keywords in header names that suggest authentication.
 var authKeywords = []string{
@@ -101,10 +86,9 @@ func checkSentinel(headerName, value string, config DetectorConfig) *Finding {
 }
 
 // checkKnownAuthHeader checks if the header is in the known auth headers list (90% confidence).
+// Uses auth.IsKnownAuthHeader from the canonical list.
 func checkKnownAuthHeader(headerName, value string) *Finding {
-	headerLower := strings.ToLower(headerName)
-
-	if knownAuthHeaders[headerLower] {
+	if auth.IsKnownAuthHeader(headerName) {
 		return &Finding{
 			HeaderName:  headerName,
 			HeaderValue: value,

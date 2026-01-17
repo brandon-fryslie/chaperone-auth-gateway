@@ -226,31 +226,6 @@ func dropHandler(registry service.ServiceRegistry, auditLogger *audit.Logger, lo
 	}
 }
 
-// knownAuthHeaders is the list of headers that commonly carry authentication credentials.
-// These are automatically stripped from all outgoing requests for safety.  The problematic
-// scenario being this:
-//   - A user uses a tool that requires an API KEY, for example, Claude Code
-//   - The user overrides the tool configuration to specify the url for a third party LLM provider (e.g., ANTHROPIC_BASE_URL=z.ai/anthropic)
-//     In this situation, if the user runs Claude Code without specifying the env var ANTHROPIC_API_KEY and the user is logged
-//     in to a Claude Code subscription, the user's subscription credentials will be sent to z.ai with no visible indication
-//   - Although this is known/standard behavior and to be expected on some level, this is such an easy configuration mistake to make
-//     that I think it is going to be extremely common.  I made the mistake several times when testing this application, even after knowing about it
-//   - In this application, stripping existing auth shouldn't be a problem.  If this is problematic for your use case, please
-//     let me know what your use case is and why the traffic needs to go through this proxy rather than bypassing it.
-var knownAuthHeaders = []string{
-	"authorization",
-	"x-api-key",
-	"x-auth-token",
-	"api-key",
-	"apikey",
-	"x-access-token",
-	"x-token",
-	"token",
-	"bearer",
-	"x-session-token",
-	"x-csrf-token",
-	"x-xsrf-token",
-}
 
 // securityStripAuthHandler creates a handler that ALWAYS strips known auth headers
 // from requests to configured services. This is a security measure to prevent
@@ -274,7 +249,7 @@ func securityStripAuthHandler(registry service.ServiceRegistry, auditLogger *aud
 
 		// Check each known auth header
 		var strippedHeaders []string
-		for _, knownHeader := range knownAuthHeaders {
+		for _, knownHeader := range auth.KnownAuthHeaders {
 			// Find all case variations of this header
 			for actualHeader := range r.Header {
 				if strings.ToLower(actualHeader) == knownHeader {
