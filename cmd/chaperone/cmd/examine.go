@@ -19,12 +19,12 @@ import (
 
 var (
 	// Examine flags
-	showBody     bool
-	showParams   bool
-	showCookies  bool
-	showResponse bool
-	outputFile   string
-	enableHAR    bool
+	showBody      bool
+	showParams    bool
+	showCookies   bool
+	showResponse  bool
+	outputFile    string
+	enableHAR     bool
 	harOutputFile string
 )
 
