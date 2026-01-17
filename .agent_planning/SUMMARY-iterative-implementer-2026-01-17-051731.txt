@@ -1,0 +1,66 @@
+Agent: iterative-implementer | 2026-01-17-051551
+Mode: manual
+Completed: HAR Recording for Examine Mode | Files: 4 | Commits: 4
+Cache invalidated: None (no eval cache exists yet)
+Status: complete
+
+## Summary
+
+Implemented HAR (HTTP Archive) recording capability for examine mode, enabling traffic capture for debugging in Chrome DevTools, Firefox, and other tools.
+
+## Changes Made
+
+### 1. internal/recorder/har.go
+- Implemented WriteToFile() method (previously returned nil)
+- Added os.WriteFile() call with 0600 permissions
+- Proper error handling for file write operations
+
+### 2. internal/proxy/server.go
+- Updated NewExamineProxy() signature to accept optional *recorder.Recorder
+- Wired recordRequestHandler and recordResponseHandler when recorder provided
+- Maintains backward compatibility (nil recorder = no recording)
+
+### 3. cmd/chaperone/cmd/examine.go
+- Added --har flag to enable HAR recording
+- Added --har-output flag for custom output path
+- Default filename: chaperone-<timestamp>.har
+- Registered shutdown handler to write HAR on graceful exit
+- Updated help text with HAR documentation
+
+### 4. README.md
+- Added HAR recording to Examine Mode features list
+- Documented --har and --har-output flags with examples
+- Included Chrome DevTools and Firefox import instructions
+
+## Verification
+
+✅ go build ./... - All packages compile successfully
+✅ go test ./... - No new test failures (existing failures are unrelated)
+✅ Help text - Verified flags appear in --help output
+⏳ Manual testing - Requires user validation (HAR capture, import to DevTools)
+
+## Commits
+
+1. e12a1a6 - feat(recorder): implement WriteToFile for HAR archives
+2. 25d59e5 - feat(proxy): add optional HAR recorder to NewExamineProxy
+3. 47a6d44 - feat(examine): add HAR recording flags
+4. 5022496 - docs: document HAR recording capability in examine mode
+
+## Next Steps for User
+
+Manual testing recommended:
+1. Build: go build ./cmd/chaperone
+2. Run: ./chaperone examine --har
+3. Configure app to use proxy: export HTTPS_PROXY=http://127.0.0.1:4010
+4. Make some HTTPS requests
+5. Press Ctrl+C to stop proxy
+6. Verify HAR file created (e.g., chaperone-20260117-051551.har)
+7. Import into Chrome DevTools (Network tab → right-click → Import HAR)
+8. Verify request/response pairs are visible
+
+## Notes
+
+- HAR files use 0600 permissions (owner read/write only) for security
+- HAR recording is optional (off by default)
+- No changes to inject/run modes
+- Fully backward compatible with existing examine mode usage
