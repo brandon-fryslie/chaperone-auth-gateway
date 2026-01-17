@@ -12,6 +12,7 @@ import (
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/proxy"
+	"github.com/bmf/chaperone/internal/recorder"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,8 @@ var (
 	showCookies  bool
 	showResponse bool
 	outputFile   string
+	enableHAR    bool
+	harOutputFile string
 )
 
 var examineCmd = &cobra.Command{
@@ -43,10 +46,18 @@ Optional flags control additional output:
 - Request/response bodies (--show-body)
 - Server responses (--show-response)
 
+HAR Recording:
+- Capture traffic in HAR format with --har flag
+- HAR files can be imported into Chrome DevTools, Firefox, and other tools
+- Default filename: chaperone-<timestamp>.har
+- Custom path: --har-output <path>
+
 Example:
   chaperone examine
   chaperone examine --show-params --show-cookies
-  chaperone examine --output results.txt  # Enables all flags and saves to file`,
+  chaperone examine --output results.txt  # Enables all flags and saves to file
+  chaperone examine --har                  # Capture HAR
+  chaperone examine --har --har-output traffic.har`,
 	RunE: runExamine,
 }
 
@@ -59,6 +70,8 @@ func init() {
 	examineCmd.Flags().BoolVar(&showCookies, "show-cookies", false, "Show cookies")
 	examineCmd.Flags().BoolVarP(&showResponse, "show-response", "r", false, "Show server responses")
 	examineCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Save results to file (enables all flags)")
+	examineCmd.Flags().BoolVar(&enableHAR, "har", false, "Enable HAR recording (HTTP Archive format)")
+	examineCmd.Flags().StringVar(&harOutputFile, "har-output", "", "Custom HAR output file path (implies --har)")
 }
 
 func runExamine(cmd *cobra.Command, args []string) error {
@@ -70,6 +83,11 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		showParams = true
 		showCookies = true
 		showResponse = true
+	}
+
+	// If har-output is specified, enable HAR recording
+	if harOutputFile != "" {
+		enableHAR = true
 	}
 
 	// Minimal config - just need server address/port
@@ -141,6 +159,34 @@ func runExamine(cmd *cobra.Command, args []string) error {
 	shutdownMgr := shutdown.NewManager(slog.Default())
 	examineLogger := examine.NewLogger(nil, examineConfig)
 
+	// Create HAR recorder if enabled
+	var rec *recorder.Recorder
+	var harPath string
+	if enableHAR {
+		rec = recorder.NewRecorder()
+
+		// Determine HAR output path
+		if harOutputFile != "" {
+			harPath = harOutputFile
+		} else {
+			// Default: chaperone-<timestamp>.har
+			timestamp := time.Now().Format("20060102-150405")
+			harPath = fmt.Sprintf("chaperone-%s.har", timestamp)
+		}
+
+		// Register shutdown handler to write HAR file
+		shutdownMgr.Register(func(ctx context.Context) error {
+			log.Info(ctx, "writing HAR file", "path", harPath)
+			if err := rec.WriteToFile(harPath); err != nil {
+				return fmt.Errorf("failed to write HAR file: %w", err)
+			}
+			log.Info(ctx, "HAR file written successfully", "path", harPath)
+			return nil
+		})
+
+		log.Info(ctx, "HAR recording enabled", "output_path", harPath)
+	}
+
 	// Log startup info
 	log.Info(ctx, "chaperone examine mode starting",
 		"address", cfg.Server.Address,
@@ -156,7 +202,12 @@ func runExamine(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Real API keys, tokens, and passwords will be transmitted to their destinations.\n")
 	fmt.Printf("  Use test/development credentials when possible.\n\n")
 
-	server := proxy.NewExamineProxy(cfg, slog.Default(), shutdownMgr, certCache, examineLogger)
+	if enableHAR {
+		fmt.Printf("  HAR Recording: ENABLED\n")
+		fmt.Printf("  Output file: %s\n\n", harPath)
+	}
+
+	server := proxy.NewExamineProxy(cfg, slog.Default(), shutdownMgr, certCache, examineLogger, rec)
 
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start examine proxy: %w", err)
