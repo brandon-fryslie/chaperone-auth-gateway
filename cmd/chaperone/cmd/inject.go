@@ -5,16 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
+	"github.com/bmf/chaperone/internal/orchestrate"
 	"github.com/bmf/chaperone/internal/proxy"
-	"github.com/bmf/chaperone/internal/secrets"
-	"github.com/bmf/chaperone/internal/service"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
 )
@@ -62,9 +59,9 @@ func runInject(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	// Determine service filter (if provided)
-	var serviceFilter string
+	var serviceFilter []string
 	if len(args) > 0 {
-		serviceFilter = args[0]
+		serviceFilter = []string{args[0]}
 	}
 
 	// Load configuration using shared getConfigPath()
@@ -128,8 +125,8 @@ func runInject(cmd *cobra.Command, args []string) error {
 		)
 	}
 
-	if serviceFilter != "" {
-		log.Info(ctx, "service filter enabled", "service", serviceFilter)
+	if len(serviceFilter) > 0 {
+		log.Info(ctx, "service filter enabled", "service", serviceFilter[0])
 	}
 
 	// Create shutdown manager
@@ -171,144 +168,33 @@ func runInject(cmd *cobra.Command, args []string) error {
 		)
 	}
 
-	// Create certificate cache
-	certCache := mitm.NewCertCache(ca, slog.Default())
-
-	// Create service registry
-	registry := service.NewRegistry()
-
-	// Load services from config
-	serviceCount := 0
-	headerStrategies := make(map[string]bool) // Track header strategies to register
-	credentialRefs := make([]string, 0)       // Collect credential refs for preloading
-	for name, svcCfg := range cfg.Services {
-		// Apply service filter if specified
-		if serviceFilter != "" && name != serviceFilter {
-			continue
-		}
-
-		// Determine auth strategy reference
-		// Support both documented formats:
-		// 1. Combined format (recommended): auth_strategy = "header:x-api-key"
-		// 2. Separate fields format: auth_strategy = "header", header_name = "x-api-key"
-		authStrategyRef := svcCfg.AuthStrategy
-		headerName := svcCfg.HeaderName
-
-		if strings.HasPrefix(svcCfg.AuthStrategy, "header:") {
-			// Combined format: auth_strategy = "header:x-api-key"
-			headerName = svcCfg.AuthStrategy[7:] // Extract "x-api-key" from "header:x-api-key"
-			authStrategyRef = svcCfg.AuthStrategy
-			headerStrategies[headerName] = true
-		} else if svcCfg.AuthStrategy == "header" && svcCfg.HeaderName != "" {
-			// Separate fields format: auth_strategy = "header", header_name = "x-api-key"
-			authStrategyRef = "header:" + svcCfg.HeaderName
-			headerStrategies[svcCfg.HeaderName] = true
-		}
-
-		// Collect credential refs for preloading
-		if svcCfg.CredentialRef != "" {
-			credentialRefs = append(credentialRefs, svcCfg.CredentialRef)
-		}
-
-		// Convert config.ServiceConfig to service.Service
-		svc := &service.Service{
-			Name:            name,
-			HostPattern:     svcCfg.HostPattern,
-			AuthStrategyRef: authStrategyRef,
-			HeaderName:      svcCfg.HeaderName,
-			CredentialRef:   svcCfg.CredentialRef,
-			Placeholder:     svcCfg.Placeholder,
-			Policy: &service.Policy{
-				AllowedMethods: svcCfg.AllowedMethods,
-				AllowedPaths:   svcCfg.AllowedPaths,
-				MaxBodyBytes:   svcCfg.MaxBodyBytes,
-				ClientGroups:   svcCfg.ClientGroups,
-				Drop:           svcCfg.Drop,
-				Strip:          svcCfg.Strip,
-			},
-		}
-
-		// Apply policy defaults
-		svc.Policy.ApplyDefaults()
-
-		// Register service
-		if err := registry.Register(svc); err != nil {
-			log.Error(ctx, "failed to register service", err,
-				"service", name,
-				"host_pattern", svcCfg.HostPattern,
-			)
-			return fmt.Errorf("failed to register service %s: %w", name, err)
-		}
-
-		serviceCount++
-		log.Info(ctx, "registered service",
-			"name", name,
-			"host_pattern", svcCfg.HostPattern,
-			"auth_strategy", authStrategyRef,
-		)
+	// Use orchestrate.Setup() for shared initialization logic
+	setupCfg := orchestrate.SetupConfig{
+		Config:       cfg,
+		ServiceNames: serviceFilter,
+		CAKeyPath:    caKeyPath,
+		CACertPath:   caCertPath,
 	}
 
-	if serviceFilter != "" && serviceCount == 0 {
-		return fmt.Errorf("service %q not found in config", serviceFilter)
-	}
-
-	log.Info(ctx, "MITM enabled for configured services",
-		"service_count", serviceCount,
-	)
-
-	// Initialize secret and auth registries
-	secretRegistry := secrets.NewRegistry()
-	authRegistry := auth.NewRegistry()
-
-	// Register built-in secret providers
-	secretRegistry.Register("env", secrets.NewEnvProvider())
-	secretRegistry.Register("file", secrets.NewFileProvider())
-	secretRegistry.Register("keychain", secrets.NewKeychainProvider())
-
-	// Preload secrets at startup to avoid expensive lookups during request handling
-	if len(credentialRefs) > 0 {
-		if err := secretRegistry.PreloadSecrets(ctx, credentialRefs...); err != nil {
-			return fmt.Errorf("failed to preload secrets at startup: %w", err)
-		}
-		log.Info(ctx, "preloaded secrets at startup",
-			"secret_count", len(credentialRefs),
-		)
-	}
-
-	// Register built-in auth strategies
-	authRegistry.Register("bearer", &auth.BearerStrategy{})
-
-	// Register header strategies for each unique header name used in config
-	for headerName := range headerStrategies {
-		strategyKey := "header:" + headerName
-		authRegistry.Register(strategyKey, &auth.HeaderStrategy{HeaderName: headerName})
-		log.Debug(ctx, "registered header auth strategy",
-			"strategy", strategyKey,
-			"header_name", headerName,
-		)
-	}
-
-	// Validate all services have registered auth strategies and credentials
-	if serviceCount > 0 {
-		if err := validateConfiguration(ctx, registry, authRegistry, secretRegistry); err != nil {
-			return fmt.Errorf("configuration validation failed: %w", err)
-		}
+	result, err := orchestrate.Setup(ctx, setupCfg, ca, slog.Default())
+	if err != nil {
+		return err
 	}
 
 	// Create proxy server with MITM support
 	var proxyServer *proxy.Server
-	if serviceCount > 0 {
+	if len(result.ServiceRegistry.ListAll()) > 0 {
 		// Use MITM-enabled proxy if services are configured
 		// Pass registries via options to enable authentication
 		proxyServer = proxy.NewWithMITM(
 			cfg,
 			slog.Default(),
 			shutdownMgr,
-			registry,
-			certCache,
+			result.ServiceRegistry,
+			result.CertCache,
 			&proxy.MITMOptions{
-				SecretRegistry: secretRegistry,
-				AuthRegistry:   authRegistry,
+				SecretRegistry: result.SecretRegistry,
+				AuthRegistry:   result.AuthRegistry,
 			},
 		)
 		log.Info(ctx, "proxy server created with MITM support and authentication")
@@ -351,100 +237,4 @@ func setupLogging(cfg *config.Config) {
 		Level:  cfg.Logging.Level,
 		Format: log.Format(logFormat),
 	})
-}
-
-// validateConfiguration checks that all configured services have valid configuration:
-// - auth strategies exist
-// - secret providers exist (for credential references)
-// - host patterns are valid
-// - policy configuration is valid
-// This is called at startup to catch configuration errors early.
-func validateConfiguration(ctx context.Context, registry service.ServiceRegistry, authRegistry *auth.Registry, secretRegistry *secrets.Registry) error {
-	var validationErrors []string
-
-	for _, svc := range registry.ListAll() {
-		// Validate auth strategy
-		strategyRef := svc.AuthStrategyRef
-		if strategyRef == "" {
-			strategyRef = "bearer" // Default strategy
-		}
-
-		if !authRegistry.Has(strategyRef) {
-			errMsg := fmt.Sprintf("auth strategy %q not registered (host pattern: %s)", strategyRef, svc.HostPattern)
-			validationErrors = append(validationErrors, errMsg)
-			log.Error(ctx, "auth strategy not found",
-				fmt.Errorf("%s", errMsg),
-				"host_pattern", svc.HostPattern,
-			)
-		}
-
-		// Validate secret provider (if credential reference exists)
-		if svc.CredentialRef != "" {
-			provider := parseSecretProvider(svc.CredentialRef)
-			if provider == "" {
-				errMsg := fmt.Sprintf("invalid credential_ref format %q (host pattern: %s)", svc.CredentialRef, svc.HostPattern)
-				validationErrors = append(validationErrors, errMsg)
-				log.Error(ctx, "invalid credential reference format",
-					fmt.Errorf("%s", errMsg),
-					"credential_ref", svc.CredentialRef,
-					"host_pattern", svc.HostPattern,
-				)
-			} else if !secretRegistry.HasProvider(provider) {
-				errMsg := fmt.Sprintf("secret provider %q not found for credential_ref %q (host pattern: %s)", provider, svc.CredentialRef, svc.HostPattern)
-				validationErrors = append(validationErrors, errMsg)
-				log.Error(ctx, "secret provider not found",
-					fmt.Errorf("%s", errMsg),
-					"provider", provider,
-					"credential_ref", svc.CredentialRef,
-					"host_pattern", svc.HostPattern,
-				)
-			}
-		}
-
-		// Validate host pattern (basic check - should be non-empty)
-		if svc.HostPattern == "" {
-			errMsg := "host pattern is empty"
-			validationErrors = append(validationErrors, errMsg)
-			log.Error(ctx, "invalid service configuration",
-				fmt.Errorf("%s", errMsg),
-				"service", svc,
-			)
-		}
-
-		// Validate policy configuration
-		if svc.Policy != nil {
-			if svc.Policy.MaxBodyBytes < 0 {
-				errMsg := fmt.Sprintf("max_body_bytes is negative (host pattern: %s)", svc.HostPattern)
-				validationErrors = append(validationErrors, errMsg)
-				log.Error(ctx, "invalid policy configuration",
-					fmt.Errorf("%s", errMsg),
-					"host_pattern", svc.HostPattern,
-				)
-			}
-		}
-	}
-
-	if len(validationErrors) > 0 {
-		return fmt.Errorf("configuration validation failed: %d error(s): %v", len(validationErrors), validationErrors)
-	}
-
-	log.Info(ctx, "configuration validation passed")
-	return nil
-}
-
-// parseSecretProvider extracts the provider name from a secret reference.
-// Returns empty string if format is invalid.
-// Format: "provider:path"
-func parseSecretProvider(ref string) string {
-	idx := -1
-	for i, r := range ref {
-		if r == ':' {
-			idx = i
-			break
-		}
-	}
-	if idx == -1 {
-		return "" // Invalid format
-	}
-	return ref[:idx]
 }

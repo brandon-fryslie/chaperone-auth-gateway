@@ -7,18 +7,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
+	"github.com/bmf/chaperone/internal/orchestrate"
 	"github.com/bmf/chaperone/internal/proxy"
 	"github.com/bmf/chaperone/internal/run"
-	"github.com/bmf/chaperone/internal/secrets"
-	"github.com/bmf/chaperone/internal/service"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
 )
@@ -181,79 +178,17 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to generate ephemeral CA: %w", err)
 	}
 
-	certCache := mitm.NewCertCache(ca, slog.Default())
-
-	// Create service registry (single service)
-	registry := service.NewRegistry()
-
-	// Register the service
-	headerStrategies := make(map[string]bool)
-	authStrategyRef := svc.AuthStrategy
-	headerName := svc.HeaderName
-
-	if strings.HasPrefix(svc.AuthStrategy, "header:") {
-		headerName = svc.AuthStrategy[7:]
-		authStrategyRef = svc.AuthStrategy
-		headerStrategies[headerName] = true
-	} else if svc.AuthStrategy == "header" && svc.HeaderName != "" {
-		authStrategyRef = "header:" + svc.HeaderName
-		headerStrategies[svc.HeaderName] = true
+	// Use orchestrate.Setup() for shared initialization logic
+	setupCfg := orchestrate.SetupConfig{
+		Config:       cfg,
+		ServiceNames: []string{serviceName},
+		CAKeyPath:    caKeyPath,
+		CACertPath:   caCertPath,
 	}
 
-	serviceDef := &service.Service{
-		Name:            serviceName,
-		HostPattern:     svc.HostPattern,
-		AuthStrategyRef: authStrategyRef,
-		HeaderName:      svc.HeaderName,
-		CredentialRef:   svc.CredentialRef,
-		Placeholder:     svc.Placeholder,
-		Policy: &service.Policy{
-			AllowedMethods: svc.AllowedMethods,
-			AllowedPaths:   svc.AllowedPaths,
-			MaxBodyBytes:   svc.MaxBodyBytes,
-			ClientGroups:   svc.ClientGroups,
-			Drop:           svc.Drop,
-			Strip:          svc.Strip,
-		},
-	}
-
-	serviceDef.Policy.ApplyDefaults()
-
-	if err := registry.Register(serviceDef); err != nil {
-		return fmt.Errorf("failed to register service: %w", err)
-	}
-
-	log.Info(ctx, "registered service",
-		"name", serviceName,
-		"host_pattern", svc.HostPattern,
-		"auth_strategy", authStrategyRef,
-	)
-
-	// Initialize secret and auth registries
-	secretRegistry := secrets.NewRegistry()
-	authRegistry := auth.NewRegistry()
-
-	secretRegistry.Register("env", secrets.NewEnvProvider())
-	secretRegistry.Register("file", secrets.NewFileProvider())
-	secretRegistry.Register("keychain", secrets.NewKeychainProvider())
-
-	// Preload secrets
-	if svc.CredentialRef != "" {
-		if err := secretRegistry.PreloadSecrets(ctx, svc.CredentialRef); err != nil {
-			return fmt.Errorf("failed to preload secrets: %w", err)
-		}
-	}
-
-	// Register auth strategies
-	authRegistry.Register("bearer", &auth.BearerStrategy{})
-	for headerName := range headerStrategies {
-		strategyKey := "header:" + headerName
-		authRegistry.Register(strategyKey, &auth.HeaderStrategy{HeaderName: headerName})
-	}
-
-	// Validate configuration
-	if err := validateConfiguration(ctx, registry, authRegistry, secretRegistry); err != nil {
-		return fmt.Errorf("configuration validation failed: %w", err)
+	result, err := orchestrate.Setup(ctx, setupCfg, ca, slog.Default())
+	if err != nil {
+		return err
 	}
 
 	// Create and start proxy server
@@ -261,11 +196,11 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		cfg,
 		slog.Default(),
 		shutdownMgr,
-		registry,
-		certCache,
+		result.ServiceRegistry,
+		result.CertCache,
 		&proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			SecretRegistry: result.SecretRegistry,
+			AuthRegistry:   result.AuthRegistry,
 		},
 	)
 
