@@ -74,6 +74,7 @@ Applications never see or handle API keys - Chaperone injects them transparently
 - **Non-Interactive Mode** - `--yes` flag for automation
 - **Dry-Run Mode** - Preview config without saving
 
+
 ### 🔍 Examine Mode (Auth Discovery)
 
 - **Zero-Config Operation** - Runs with minimal configuration
@@ -82,6 +83,7 @@ Applications never see or handle API keys - Chaperone injects them transparently
 - **Configurable Display** - Show/hide params, cookies, bodies, responses
 - **File Output** - Save findings to file for analysis
 - **Real-Time Logging** - Immediate feedback on detected patterns
+- **HAR Recording** - Capture traffic in HTTP Archive format for Chrome DevTools/Firefox
 
 ### 📊 Logging & Monitoring
 
@@ -722,6 +724,7 @@ chaperone inject --log-level debug
 - `--log-format <format>` - Log format (text, json, logfmt)
 
 ### `chaperone examine`
+### `chaperone examine`
 
 Auth discovery mode (passthrough MITM logging):
 
@@ -746,6 +749,15 @@ chaperone examine -o findings.txt
 
 # Combine flags
 chaperone examine -p -b -r --show-cookies
+
+# Capture HAR (HTTP Archive) for debugging
+chaperone examine --har
+
+# Capture HAR with custom output path
+chaperone examine --har --har-output traffic.har
+
+# Combine HAR with other flags
+chaperone examine -b -r --har --har-output session.har
 ```
 
 **Flags:**
@@ -754,7 +766,26 @@ chaperone examine -p -b -r --show-cookies
 - `-b, --show-body` - Show request/response bodies
 - `-r, --show-response` - Show response data
 - `-o, --output <path>` - Save to file (enables all flags)
+- `--har` - Enable HAR recording (HTTP Archive format)
+- `--har-output <path>` - Custom HAR output file path (implies --har)
 - `-c, --config <path>` - Config file path
+
+**HAR Recording:**
+
+The `--har` flag enables HTTP Archive (HAR) format recording:
+
+```bash
+# Default: chaperone-<timestamp>.har
+chaperone examine --har
+
+# Custom output path
+chaperone examine --har-output debug-session.har
+```
+
+HAR files can be imported into:
+- Chrome DevTools (Network tab → right-click → "Import HAR file")
+- Firefox Developer Tools (Network tab → gear icon → "Import HAR")
+- Charles Proxy, Fiddler, and other debugging tools
 
 **How it works:**
 1. Runs proxy in passthrough mode (doesn't modify requests)
@@ -762,11 +793,13 @@ chaperone examine -p -b -r --show-cookies
 3. Logs auth-relevant headers and data
 4. Filters out noise (content-type, user-agent, x-stainless-*, etc.)
 5. Shows findings in real-time
+6. Optionally captures complete HAR archive on shutdown
 
 **Use cases:**
 - Discover authentication patterns for new APIs
 - Debug authentication issues
 - Understand what headers an application sends
+- Capture traffic for offline analysis in browser DevTools
 
 ### `chaperone check`
 
