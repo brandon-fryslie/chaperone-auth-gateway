@@ -19,6 +19,28 @@ const (
 	EventPlaceholderMismatch = "placeholder_mismatch"
 )
 
+// AuditLogger is the interface for audit logging.
+// Implementations must be safe for concurrent use.
+type AuditLogger interface {
+	// Log writes an audit entry. Returns nil for disabled loggers.
+	Log(entry Entry) error
+	// Close releases any resources held by the logger.
+	Close() error
+}
+
+// Ensure Logger implements AuditLogger
+var _ AuditLogger = (*Logger)(nil)
+
+// noopLogger is a no-op implementation of AuditLogger.
+type noopLogger struct{}
+
+func (n *noopLogger) Log(Entry) error { return nil }
+func (n *noopLogger) Close() error    { return nil }
+
+// Noop returns a no-op audit logger that discards all entries.
+// Use this instead of nil to avoid nil checks in handler code.
+func Noop() AuditLogger { return &noopLogger{} }
+
 // Entry represents a single audit log entry for security-relevant events.
 // Fields align with FedRAMP AU-3 requirements: who, what, when, where, outcome.
 type Entry struct {

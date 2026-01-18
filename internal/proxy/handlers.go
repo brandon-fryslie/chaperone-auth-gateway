@@ -87,7 +87,7 @@ func connectHandler(registry service.ServiceRegistry, certStore *GoproxyCertStor
 }
 
 // policyHandler creates a handler that enforces service policies.
-func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer, auditLogger *audit.Logger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer, auditLogger audit.AuditLogger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
@@ -116,7 +116,7 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 					ClientIP:   extractClientIP(r),
 					Outcome:    "blocked",
 					StatusCode: statusCode,
-					Detail:     fmt.Sprintf("method %s not allowed: %v", r.Method, err),
+					Detail:     fmt.Sprintf("method %s not allowed", r.Method),
 				})
 			}
 
@@ -139,7 +139,7 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 					ClientIP:   extractClientIP(r),
 					Outcome:    "blocked",
 					StatusCode: http.StatusForbidden,
-					Detail:     fmt.Sprintf("path %s not allowed: %v", r.URL.Path, err),
+					Detail:     fmt.Sprintf("path %s not allowed", r.URL.Path),
 				})
 			}
 
@@ -162,7 +162,7 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 					ClientIP:   extractClientIP(r),
 					Outcome:    "blocked",
 					StatusCode: http.StatusRequestEntityTooLarge,
-					Detail:     fmt.Sprintf("body size %d exceeds limit: %v", r.ContentLength, err),
+					Detail:     fmt.Sprintf("body size %d exceeds limit", r.ContentLength),
 				})
 			}
 
@@ -175,7 +175,7 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 }
 
 // dropHandler creates a handler that blocks requests matching drop patterns.
-func dropHandler(registry service.ServiceRegistry, auditLogger *audit.Logger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func dropHandler(registry service.ServiceRegistry, auditLogger audit.AuditLogger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
@@ -234,7 +234,7 @@ func dropHandler(registry service.ServiceRegistry, auditLogger *audit.Logger, lo
 //
 // WARNING: This is not configurable. If Chaperone is handling auth for a service,
 // it strips ALL known auth headers (except placeholders) first, then injects the correct credentials.
-func securityStripAuthHandler(registry service.ServiceRegistry, auditLogger *audit.Logger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func securityStripAuthHandler(registry service.ServiceRegistry, auditLogger audit.AuditLogger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
@@ -360,7 +360,7 @@ func stripHandler(registry service.ServiceRegistry, logger *slog.Logger) func(*h
 }
 
 // authHandler creates a handler that injects authentication credentials.
-func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Registry, authRegistry *auth.Registry, auditLogger *audit.Logger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Registry, authRegistry *auth.Registry, auditLogger audit.AuditLogger, logger *slog.Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 	// Track warnings for services without placeholders (warn once per service)
 	warnedServices := make(map[string]bool)
 	var warnMutex sync.Mutex
@@ -435,7 +435,7 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 		secret, err := secretRegistry.Fetch(reqCtx, svc.CredentialRef)
 		if err != nil {
 			log.Error(reqCtx, "failed to fetch secret", err,
-				"service", svc.HostPattern,
+				"service", svc.Name,
 				"ref", svc.CredentialRef)
 
 			// AUDIT: Auth failure event
@@ -463,7 +463,7 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 		strategy, err := authRegistry.Get(svc.AuthStrategyRef)
 		if err != nil {
 			log.Error(reqCtx, "unknown authentication strategy", err,
-				"service", svc.HostPattern,
+				"service", svc.Name,
 				"strategy", svc.AuthStrategyRef)
 
 			// AUDIT: Auth failure event
@@ -490,7 +490,7 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 		// Apply authentication to request
 		if err := strategy.Apply(reqCtx, r, secret); err != nil {
 			log.Error(reqCtx, "failed to apply authentication", err,
-				"service", svc.HostPattern,
+				"service", svc.Name,
 				"strategy", svc.AuthStrategyRef)
 
 			// AUDIT: Auth failure event

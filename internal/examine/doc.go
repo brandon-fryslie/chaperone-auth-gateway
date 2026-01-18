@@ -12,7 +12,7 @@
 //
 // Example usage:
 //
-//	logger := examine.NewLogger(os.Stdout)
+//	logger := examine.NewLogger(examine.Config{})
 //	logger.LogRequest(httpRequest)
 //
 // Output format:

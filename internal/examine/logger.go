@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bmf/chaperone/internal/defaults"
 	"github.com/bmf/chaperone/internal/log"
 )
 
@@ -88,11 +89,10 @@ type Logger struct {
 }
 
 // NewLogger creates a new examine-mode logger.
-// The io.Writer parameter is kept for backward compatibility but is no longer used.
-func NewLogger(_ io.Writer, config Config) *Logger {
+func NewLogger(config Config) *Logger {
 	// Set sensible defaults
 	if config.MaxBodyBytes == 0 {
-		config.MaxBodyBytes = 4096 // 4KB default
+		config.MaxBodyBytes = defaults.DefaultExamineBodyBytes
 	}
 	if config.SentinelValue == "" {
 		config.SentinelValue = "chaperone-sentinel"
@@ -228,7 +228,6 @@ func (l *Logger) logAuthHeaderLine(ctx context.Context, name, value, url string)
 
 	return foundSentinel
 }
-
 
 // LogResponse logs a response in examine mode using structured logging.
 func (l *Logger) LogResponse(resp *http.Response) {

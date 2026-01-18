@@ -440,7 +440,7 @@ func (h *TextHandler) formatDetail(b *strings.Builder, msg string, attrs map[str
 		}
 	} else if detailColor == "orange" {
 		if showBg {
-			b.WriteString(bg24(100, 60, 20)) // Deep dark orange background
+			b.WriteString(bg24(100, 60, 20))  // Deep dark orange background
 			b.WriteString(fg24(255, 180, 80)) // Bright orange text
 			b.WriteString(bold)
 		} else {
@@ -456,7 +456,7 @@ func (h *TextHandler) formatDetail(b *strings.Builder, msg string, attrs map[str
 		}
 	} else if detailColor == "lightblue" {
 		if showBg {
-			b.WriteString(bg24(20, 40, 80))   // Dark blue background
+			b.WriteString(bg24(20, 40, 80))    // Dark blue background
 			b.WriteString(fg24(150, 200, 255)) // Light blue text
 			b.WriteString(bold)
 		} else {

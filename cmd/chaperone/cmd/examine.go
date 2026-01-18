@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bmf/chaperone/internal/config"
+	"github.com/bmf/chaperone/internal/defaults"
 	"github.com/bmf/chaperone/internal/examine"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
@@ -296,7 +297,7 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		ShowParams:    showParams,
 		ShowCookies:   showCookies,
 		ShowResponse:  showResponse,
-		MaxBodyBytes:  4096, // 4KB
+		MaxBodyBytes:  defaults.DefaultExamineBodyBytes,
 		AllHeaders:    allHeaders,
 		SentinelValue: sentinelValue,
 	}
@@ -331,7 +332,7 @@ func runExamine(cmd *cobra.Command, args []string) error {
 
 	certCache := mitm.NewCertCache(ca, slog.Default())
 	shutdownMgr := shutdown.NewManager(slog.Default())
-	examineLogger := examine.NewLogger(nil, examineConfig)
+	examineLogger := examine.NewLogger(examineConfig)
 
 	// Set command name for config generation if running with a command
 	if len(cliCommand) > 0 {

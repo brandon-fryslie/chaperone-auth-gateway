@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 
+	"github.com/bmf/chaperone/internal/defaults"
 	"github.com/bmf/chaperone/internal/errors"
 )
 
@@ -75,6 +76,6 @@ func (p *Policy) ApplyDefaults() {
 
 	// Default MaxBodyBytes to 10MB if not set
 	if p.MaxBodyBytes == 0 {
-		p.MaxBodyBytes = 10 * 1024 * 1024 // 10MB
+		p.MaxBodyBytes = defaults.DefaultMaxBodyBytes
 	}
 }

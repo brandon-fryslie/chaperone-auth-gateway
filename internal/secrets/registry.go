@@ -3,6 +3,7 @@ package secrets
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -57,7 +58,7 @@ func (r *Registry) Fetch(ctx context.Context, ref string) (string, error) {
 	r.mu.RUnlock()
 
 	// Parse provider and path from ref
-	idx := indexOf(ref, ':')
+	idx := strings.Index(ref, ":")
 	if idx == -1 {
 		return "", fmt.Errorf("invalid secret reference format: missing colon separator (expected 'provider:path')")
 	}
@@ -122,22 +123,4 @@ func (r *Registry) PreloadSecrets(ctx context.Context, refs ...string) error {
 	}
 
 	return nil
-}
-
-// indexOf returns the index of the first occurrence of sep in s,
-// or -1 if sep is not present.
-func indexOf(s string, sep rune) int {
-	for i, r := range s {
-		if r == sep {
-			return i
-		}
-	}
-	return -1
-}
-
-// Get returns a registered provider by name, or nil if not found.
-func (r *Registry) Get(name string) SecretProvider {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.providers[name]
 }
