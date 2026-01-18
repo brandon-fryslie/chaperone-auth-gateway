@@ -138,7 +138,6 @@ func printCompleteConfig(ctx context.Context, examineLogger *examine.Logger) {
 	}
 
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "# For testing only (NOT secure):\n")
 	fmt.Fprintf(os.Stderr, "# credential_ref = \"env:YOUR_API_KEY\"\n")
 	fmt.Fprintf(os.Stderr, "\n")
 }
