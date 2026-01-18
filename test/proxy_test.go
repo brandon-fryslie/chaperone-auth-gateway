@@ -419,9 +419,11 @@ func testTunnelBidirectionalDataFlow(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Create HTTP client configured to use proxy
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	transport := &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
+
+		DialContext: dialer,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true, // Accept test server cert
 		},
@@ -599,9 +601,11 @@ func testTunnelCleanupOnClientDisconnect(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Create client that disconnects early
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	transport := &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
+
+		DialContext: dialer,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
@@ -661,9 +665,11 @@ func testTunnelCleanupOnUpstreamDisconnect(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Make request through proxy
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	transport := &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
+
+		DialContext: dialer,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
@@ -755,9 +761,11 @@ func testConcurrentTunnelsToSameUpstream(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Create HTTP client
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	transport := &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
+
+		DialContext: dialer,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
 		},
@@ -855,10 +863,12 @@ func testConcurrentTunnelsToDifferentUpstreams(t *testing.T) {
 		go func(index int) {
 			defer wg.Done()
 
-			proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+			proxyURL, dialer := proxy.GetProxyURL(cfg)
 			client := &http.Client{
 				Transport: &http.Transport{
 					Proxy: http.ProxyURL(proxyURL),
+
+					DialContext: dialer,
 					TLSClientConfig: &tls.Config{
 						InsecureSkipVerify: true,
 					},
@@ -945,10 +955,12 @@ func testTunnelIsolationDifferentClients(t *testing.T) {
 
 			clientData := fmt.Sprintf("client-%d-data", clientID)
 
-			proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+			proxyURL, dialer := proxy.GetProxyURL(cfg)
 			client := &http.Client{
 				Transport: &http.Transport{
 					Proxy: http.ProxyURL(proxyURL),
+
+					DialContext: dialer,
 					TLSClientConfig: &tls.Config{
 						InsecureSkipVerify: true,
 					},
@@ -1047,10 +1059,12 @@ func testHTTPSRequestThroughProxy(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Create HTTP client with proxy
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext: dialer,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, // Accept test server cert
 			},
@@ -1115,10 +1129,12 @@ func testHTTPSPostWithBody(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Make POST request through proxy
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext: dialer,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
 			},
@@ -1185,10 +1201,12 @@ func testHTTPSStreamingResponse(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Make streaming request through proxy
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext: dialer,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true,
 			},
@@ -1348,10 +1366,12 @@ func TestProxyPhase1CompletionChecklist(t *testing.T) {
 				defer proxyServer.Stop(ctx)
 
 				// Make HTTPS request through proxy
-				proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
+				proxyURL, dialer := proxy.GetProxyURL(cfg)
 				client := &http.Client{
 					Transport: &http.Transport{
 						Proxy: http.ProxyURL(proxyURL),
+
+						DialContext: dialer,
 						TLSClientConfig: &tls.Config{
 							InsecureSkipVerify: true,
 						},
@@ -1401,9 +1421,11 @@ func TestProxyPhase1CompletionChecklist(t *testing.T) {
 				defer proxyServer.Stop(ctx)
 
 				// Make concurrent requests
-				proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", port))
+				proxyURL, dialer := proxy.GetProxyURL(cfg)
 				transport := &http.Transport{
 					Proxy: http.ProxyURL(proxyURL),
+
+					DialContext: dialer,
 					TLSClientConfig: &tls.Config{
 						InsecureSkipVerify: true,
 					},

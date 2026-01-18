@@ -141,8 +141,7 @@ func TestDropPatternBlocksRequests(t *testing.T) {
 			defer proxyServer.Stop(ctx)
 
 			// Get proxy address
-			proxyAddr := fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port)
-			proxyURL, err := url.Parse(proxyAddr)
+			proxyURL, dialer := proxy.GetProxyURL(cfg)
 			require.NoError(t, err)
 
 			// Create client that trusts our CA
@@ -154,6 +153,8 @@ func TestDropPatternBlocksRequests(t *testing.T) {
 			client := &http.Client{
 				Transport: &http.Transport{
 					Proxy: http.ProxyURL(proxyURL),
+
+					DialContext: dialer,
 					TLSClientConfig: &tls.Config{
 						RootCAs: caCertPool,
 					},
@@ -318,8 +319,7 @@ func TestStripHeadersRemovesHeaders(t *testing.T) {
 			defer proxyServer.Stop(ctx)
 
 			// Get proxy address
-			proxyAddr := fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port)
-			proxyURL, err := url.Parse(proxyAddr)
+			proxyURL, dialer := proxy.GetProxyURL(cfg)
 			require.NoError(t, err)
 
 			// Create client that trusts our CA
@@ -331,6 +331,8 @@ func TestStripHeadersRemovesHeaders(t *testing.T) {
 			client := &http.Client{
 				Transport: &http.Transport{
 					Proxy: http.ProxyURL(proxyURL),
+
+					DialContext: dialer,
 					TLSClientConfig: &tls.Config{
 						RootCAs: caCertPool,
 					},
@@ -470,8 +472,7 @@ func TestStripPreventsWrongCredentialLeakage(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Get proxy address
-	proxyAddr := fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port)
-	proxyURL, err := url.Parse(proxyAddr)
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	require.NoError(t, err)
 
 	// Create client that trusts our CA
@@ -483,6 +484,8 @@ func TestStripPreventsWrongCredentialLeakage(t *testing.T) {
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext: dialer,
 			TLSClientConfig: &tls.Config{
 				RootCAs: caCertPool,
 			},

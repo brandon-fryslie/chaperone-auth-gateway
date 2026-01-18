@@ -134,10 +134,11 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -256,10 +257,11 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -379,10 +381,11 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -515,10 +518,11 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -659,10 +663,11 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -791,10 +796,11 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -923,10 +929,11 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -1050,10 +1057,11 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -1184,10 +1192,11 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,

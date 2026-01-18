@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -155,10 +154,12 @@ func TestSelectiveMITMWithTrustedCA(t *testing.T) {
 	ok := certPool.AppendCertsFromPEM(caCertPEM)
 	require.True(t, ok, "Should add CA cert to pool")
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext: dialer,
 			TLSClientConfig: &tls.Config{
 				RootCAs: certPool, // Trust our test CA
 			},
@@ -255,10 +256,12 @@ func TestTransparentTunnelForNonConfiguredDomains(t *testing.T) {
 
 	// Create client that trusts the upstream server's self-signed cert
 	// (since we're doing transparent tunnel, we need to trust the upstream server)
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext: dialer,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, // Trust upstream server's self-signed cert
 			},
@@ -373,10 +376,11 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -471,10 +475,11 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -568,10 +573,11 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -676,10 +682,12 @@ func TestCertificateTrustValidation(t *testing.T) {
 		defer proxyServer.Stop(ctx)
 
 		// Create client that does NOT trust test CA (uses system certs only)
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyURL(proxyURL),
+
+				DialContext: dialer,
 				// No custom RootCAs - will use system trust store
 			},
 			Timeout: 10 * time.Second,
@@ -769,10 +777,11 @@ func TestCertificateTrustValidation(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,

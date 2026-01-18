@@ -171,10 +171,12 @@ func TestBearerTokenAuthenticationEndToEnd(t *testing.T) {
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(caCertPEM)
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
+			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext:     dialer,
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		},
 		Timeout: 10 * time.Second,
@@ -323,10 +325,12 @@ func TestCustomHeaderAuthenticationEndToEnd(t *testing.T) {
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(caCertPEM)
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
+			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext:     dialer,
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		},
 		Timeout: 10 * time.Second,
@@ -460,10 +464,12 @@ func TestSecretFetchFailureReturns503(t *testing.T) {
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(caCertPEM)
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
+			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext:     dialer,
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		},
 		Timeout: 10 * time.Second,
@@ -587,10 +593,12 @@ func TestUnknownStrategyReturns502(t *testing.T) {
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(caCertPEM)
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
+			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext:     dialer,
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		},
 		Timeout: 10 * time.Second,
@@ -728,10 +736,12 @@ func TestConcurrentAuthenticatedRequests(t *testing.T) {
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(caCertPEM)
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
+			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext:     dialer,
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		},
 		Timeout: 10 * time.Second,
@@ -893,10 +903,12 @@ func TestAuthStrategyPreservesClientHeaders(t *testing.T) {
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(caCertPEM)
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
+			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext:     dialer,
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		},
 		Timeout: 10 * time.Second,
@@ -1048,10 +1060,12 @@ func TestStrategyRegistryLookup(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
-				Proxy:           http.ProxyURL(proxyURL),
+				Proxy: http.ProxyURL(proxyURL),
+
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -1166,10 +1180,12 @@ func TestStrategyRegistryLookup(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+		proxyURL, dialer := proxy.GetProxyURL(cfg)
 		client := &http.Client{
 			Transport: &http.Transport{
-				Proxy:           http.ProxyURL(proxyURL),
+				Proxy: http.ProxyURL(proxyURL),
+
+				DialContext:     dialer,
 				TLSClientConfig: &tls.Config{RootCAs: certPool},
 			},
 			Timeout: 10 * time.Second,
@@ -1303,10 +1319,12 @@ func TestAuthPreservesRequestBody(t *testing.T) {
 	certPool := x509.NewCertPool()
 	certPool.AppendCertsFromPEM(caCertPEM)
 
-	proxyURL, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", proxyPort))
+	proxyURL, dialer := proxy.GetProxyURL(cfg)
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy:           http.ProxyURL(proxyURL),
+			Proxy: http.ProxyURL(proxyURL),
+
+			DialContext:     dialer,
 			TLSClientConfig: &tls.Config{RootCAs: certPool},
 		},
 		Timeout: 10 * time.Second,
