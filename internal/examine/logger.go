@@ -455,6 +455,7 @@ func (l *Logger) printExampleConfig(ctx context.Context, sentinels, standards, p
 		// macOS: Show keychain command and credential_ref
 		credentialName := "chaperone/" + serviceName
 		keychainCmd := "security add-generic-password -s \"" + credentialName + "\" -a \"\" -w \"<YOUR_API_KEY>\""
+		log.Detail(ctx, "detail_text", "")
 		log.Detail(ctx, "detail_text", "# to add to MacOS keychain, run: "+keychainCmd+" # MacOS Only")
 		log.Detail(ctx, "detail_text", "# credential_ref = \"keychain:"+credentialName+"\" # MacOS Only")
 	}
