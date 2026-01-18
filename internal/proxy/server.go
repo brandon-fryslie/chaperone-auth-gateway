@@ -206,7 +206,7 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 // This mode is used by 'chaperone examine' to help users discover how authentication
 // credentials are passed in requests.
 // If recorder is provided, it will capture traffic in HAR format.
-func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger, rec *recorder.Recorder) *Server {
+func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger, rec *recorder.Recorder, sentinelChan chan struct{}) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -231,8 +231,11 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	// Configure CONNECT handler - MITM ALL connections (no filtering)
 	proxy.OnRequest().HandleConnectFunc(examine.ConnectHandler(certStore, logger))
 
+	// Add request ID handler FIRST - provides correlation colors for all requests
+	proxy.OnRequest().DoFunc(requestIDHandler())
+
 	// Configure request handler - log ALL requests
-	proxy.OnRequest().DoFunc(examine.RequestHandler(examineLogger))
+	proxy.OnRequest().DoFunc(examine.RequestHandler(examineLogger, sentinelChan))
 
 	// Configure response handler - log ALL responses
 	proxy.OnResponse().DoFunc(examine.ResponseHandler(examineLogger))
