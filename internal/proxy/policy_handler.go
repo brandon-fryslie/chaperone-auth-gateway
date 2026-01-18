@@ -20,8 +20,8 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
-		svc, found := registry.Lookup(r.Host)
-		if !found || svc.Policy == nil {
+		svc, err := registry.Lookup(r.Host)
+		if err != nil || svc.Policy == nil {
 			return r, nil
 		}
 
@@ -108,8 +108,8 @@ func dropHandler(registry service.ServiceRegistry, auditLogger audit.AuditLogger
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
-		svc, found := registry.Lookup(r.Host)
-		if !found || svc.Policy == nil || len(svc.Policy.Drop) == 0 {
+		svc, err := registry.Lookup(r.Host)
+		if err != nil || svc.Policy == nil || len(svc.Policy.Drop) == 0 {
 			return r, nil
 		}
 
@@ -158,8 +158,8 @@ func stripHandler(registry service.ServiceRegistry, logger *slog.Logger) func(*h
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
-		svc, found := registry.Lookup(r.Host)
-		if !found || svc.Policy == nil || len(svc.Policy.Strip) == 0 {
+		svc, err := registry.Lookup(r.Host)
+		if err != nil || svc.Policy == nil || len(svc.Policy.Strip) == 0 {
 			return r, nil
 		}
 
