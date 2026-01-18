@@ -33,8 +33,8 @@ func securityStripAuthHandler(registry service.ServiceRegistry, auditLogger audi
 		reqCtx := r.Context()
 
 		// Only strip for configured services (where we're doing MITM)
-		svc, found := registry.Lookup(r.Host)
-		if !found {
+		svc, err := registry.Lookup(r.Host)
+		if err != nil {
 			return r, nil
 		}
 
@@ -104,8 +104,8 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		reqCtx := r.Context()
 
-		svc, found := registry.Lookup(r.Host)
-		if !found {
+		svc, err := registry.Lookup(r.Host)
+		if err != nil {
 			return r, nil
 		}
 
