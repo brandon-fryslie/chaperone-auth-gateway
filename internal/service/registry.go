@@ -18,7 +18,8 @@ type ServiceRegistry interface {
 	// Register adds or updates a service configuration.
 	Register(service *Service) error
 	// Lookup finds a service by hostname.
-	Lookup(hostname string) (*Service, bool)
+	// Returns an error if the service is not found.
+	Lookup(hostname string) (*Service, error)
 	// ListAll returns all registered services.
 	ListAll() []*Service
 }

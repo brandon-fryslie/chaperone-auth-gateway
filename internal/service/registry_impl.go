@@ -62,7 +62,7 @@ func (r *Registry) Register(service *Service) error {
 // Lookup finds a service by hostname.
 // It supports exact and wildcard matches (e.g., "*.example.com").
 // Hostname lookup is case-insensitive and strips ports.
-func (r *Registry) Lookup(hostname string) (*Service, bool) {
+func (r *Registry) Lookup(hostname string) (*Service, error) {
 	// Normalize the hostname
 	normalized := normalizeHostname(hostname)
 
@@ -71,17 +71,17 @@ func (r *Registry) Lookup(hostname string) (*Service, bool) {
 
 	// 1. Exact match
 	if service, found := r.services[normalized]; found {
-		return service, true
+		return service, nil
 	}
 
 	// 2. Wildcard match
 	for pattern, service := range r.services {
 		if isWildcardMatch(pattern, normalized) {
-			return service, true
+			return service, nil
 		}
 	}
 
-	return nil, false
+	return nil, fmt.Errorf("service not found for hostname: %s", hostname)
 }
 
 // isWildcardMatch checks if a hostname matches a wildcard pattern.

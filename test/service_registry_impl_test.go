@@ -24,8 +24,8 @@ func TestRegistryBasicOperations(t *testing.T) {
 		err := registry.Register(svc)
 		require.NoError(t, err, "Service registration should succeed")
 
-		found, ok := registry.Lookup("api.example.com")
-		require.True(t, ok, "Service should be found")
+		found, err := registry.Lookup("api.example.com")
+		require.NoError(t, err, "Service should be found")
 		require.NotNil(t, found, "Found service should not be nil")
 		assert.Equal(t, "api.example.com", found.HostPattern)
 	})
@@ -50,8 +50,8 @@ func TestRegistryBasicOperations(t *testing.T) {
 		}
 
 		for _, hostname := range testCases {
-			found, ok := registry.Lookup(hostname)
-			require.True(t, ok, "Service should be found for: %s", hostname)
+			found, err := registry.Lookup(hostname)
+			require.NoError(t, err, "Service should be found for: %s", hostname)
 			require.NotNil(t, found)
 		}
 	})
@@ -75,17 +75,18 @@ func TestRegistryBasicOperations(t *testing.T) {
 		}
 
 		for _, hostname := range testCases {
-			_, ok := registry.Lookup(hostname)
-			require.True(t, ok, "Service should be found for: %s", hostname)
+			_, err := registry.Lookup(hostname)
+			require.NoError(t, err, "Service should be found for: %s", hostname)
 		}
 	})
 
 	t.Run("missing_service", func(t *testing.T) {
 		registry := service.NewRegistry()
 
-		found, ok := registry.Lookup("nonexistent.example.com")
-		assert.False(t, ok)
+		found, err := registry.Lookup("nonexistent.example.com")
+		assert.Error(t, err)
 		assert.Nil(t, found)
+		assert.Contains(t, err.Error(), "service not found for hostname")
 	})
 
 	t.Run("duplicate_registration", func(t *testing.T) {
