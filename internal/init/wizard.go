@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/bmf/chaperone/internal/config"
 )
 
 // WizardConfig configures the init wizard behavior.
@@ -117,8 +119,8 @@ func (w *Wizard) GetEvidence() *Evidence {
 }
 
 // PrintDetectionInstructions prints instructions for detection mode.
-func (w *Wizard) PrintDetectionInstructions() {
-	printDetectionInstructions(w.writer, w.config.Address, w.config.Port)
+func (w *Wizard) PrintDetectionInstructions(cfg *config.Config) {
+	printDetectionInstructions(w.writer, cfg.Server.Socket, cfg.Server.Address, cfg.Server.Port)
 }
 
 // ReportFinding prints a finding in real-time during detection.
@@ -364,7 +366,7 @@ level = "info"
 		fmt.Fprintf(w.writer, "\nConfiguration saved to: %s\n", path)
 	}
 
-	printNextSteps(w.writer, w.config.Address, w.config.Port)
+	printNextSteps(w.writer, "", w.config.Address, w.config.Port)
 	return nil
 }
 

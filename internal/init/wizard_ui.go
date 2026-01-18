@@ -6,6 +6,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/bmf/chaperone/internal/util"
 )
 
 // UI functions for the wizard - all prompts and display logic.
@@ -32,13 +34,20 @@ func printIntroduction(w io.Writer) {
 }
 
 // printDetectionInstructions prints instructions for detection mode.
-func printDetectionInstructions(w io.Writer, address string, port int) {
+func printDetectionInstructions(w io.Writer, socketPath, address string, port int) {
 	fmt.Fprintln(w, "\n=== Step 2: Detection Mode ===")
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "Proxy listening on http://%s:%d\n\n", address, port)
+
+	var proxyURL string
+	if socketPath != "" {
+		proxyURL = util.GetProxyURLString(socketPath, 0)
+	} else {
+		proxyURL = util.GetProxyURLString(address, port)
+	}
+	fmt.Fprintf(w, "Proxy listening on %s\n\n", proxyURL)
 	fmt.Fprintln(w, "Configure your application to use this proxy:")
-	fmt.Fprintf(w, "  export HTTP_PROXY=http://%s:%d\n", address, port)
-	fmt.Fprintf(w, "  export HTTPS_PROXY=http://%s:%d\n\n", address, port)
+	fmt.Fprintf(w, "  export HTTP_PROXY=%s\n", proxyURL)
+	fmt.Fprintf(w, "  export HTTPS_PROXY=%s\n\n", proxyURL)
 	fmt.Fprintln(w, "Send requests through the proxy. Detected auth patterns will appear below.")
 	fmt.Fprintln(w, "Press Ctrl+C when done to proceed to review.")
 	fmt.Fprintln(w)
@@ -58,7 +67,7 @@ func reportFinding(w io.Writer, host string, finding *Finding) {
 }
 
 // printNextSteps prints post-wizard instructions.
-func printNextSteps(w io.Writer, address string, port int) {
+func printNextSteps(w io.Writer, socketPath, address string, port int) {
 	fmt.Fprintln(w, "\n=== Next Steps ===")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "1. Trust the CA certificate in your browser/system:")
@@ -68,8 +77,14 @@ func printNextSteps(w io.Writer, address string, port int) {
 	fmt.Fprintln(w, "   chaperone inject")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "3. Configure your application to use the proxy:")
-	fmt.Fprintf(w, "   export HTTP_PROXY=http://%s:%d\n", address, port)
-	fmt.Fprintf(w, "   export HTTPS_PROXY=http://%s:%d\n", address, port)
+	var proxyURL string
+	if socketPath != "" {
+		proxyURL = util.GetProxyURLString(socketPath, 0)
+	} else {
+		proxyURL = util.GetProxyURLString(address, port)
+	}
+	fmt.Fprintf(w, "   export HTTP_PROXY=%s\n", proxyURL)
+	fmt.Fprintf(w, "   export HTTPS_PROXY=%s\n", proxyURL)
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Run 'chaperone init' again to add more services.")
 }
