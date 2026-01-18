@@ -6,34 +6,26 @@ import (
 	"sync"
 )
 
-// Provider fetches secrets from a source.
-// Implementations include EnvProvider, FileProvider, KeychainProvider, etc.
-type Provider interface {
-	// Fetch retrieves a secret value for the given path.
-	// The path format is provider-specific.
-	Fetch(ctx context.Context, path string) (string, error)
-}
-
 // Registry manages secret providers by name.
 // It is safe for concurrent use.
 // Secrets are cached in memory after the first fetch to avoid repeated lookups.
 type Registry struct {
 	mu        sync.RWMutex
-	providers map[string]Provider
+	providers map[string]SecretProvider
 	cache     map[string]string // cache of fetched secrets: "provider:path" -> secret value
 }
 
 // NewRegistry creates a new secret provider registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		providers: make(map[string]Provider),
+		providers: make(map[string]SecretProvider),
 		cache:     make(map[string]string),
 	}
 }
 
 // Register adds or replaces a secret provider.
 // If a provider with the same name already exists, it will be replaced.
-func (r *Registry) Register(name string, provider Provider) {
+func (r *Registry) Register(name string, provider SecretProvider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers[name] = provider
@@ -144,7 +136,7 @@ func indexOf(s string, sep rune) int {
 }
 
 // Get returns a registered provider by name, or nil if not found.
-func (r *Registry) Get(name string) Provider {
+func (r *Registry) Get(name string) SecretProvider {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.providers[name]

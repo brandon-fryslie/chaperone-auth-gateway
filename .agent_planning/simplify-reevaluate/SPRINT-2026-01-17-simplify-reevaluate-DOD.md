@@ -95,7 +95,7 @@
 
 - `8f6e16b`: refactor: extract examine and init handlers to respective packages
 - `3beefc4`: refactor(cmd): extract CA and proxy initialization to orchestrate helpers
-- TBD: refactor(cmd): extract remaining orchestration logic to internal packages
+- `70e411b`: refactor(cmd): extract remaining orchestration logic to internal packages
 
 ## Out of Scope
 

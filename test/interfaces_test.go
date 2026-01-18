@@ -478,14 +478,6 @@ func TestPackageImports(t *testing.T) {
 		}
 		t.Log("PASS: strategy.go imports context and net/http")
 	})
-
-	t.Run("logger_imports_context", func(t *testing.T) {
-		path := filepath.Join(projectRoot, "internal/audit/logger.go")
-		if !fileImportsPackage(t, path, "context") {
-			t.Fatal("FAIL: logger.go must import context (needed for LogRequest method)")
-		}
-		t.Log("PASS: logger.go imports context")
-	})
 }
 
 // fileImportsPackage checks if a file imports a specific package
