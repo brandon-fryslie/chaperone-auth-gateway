@@ -203,7 +203,7 @@ func runWizardInit() error {
 	shutdownMgr := shutdown.NewManager(slog.Default())
 
 	// Step 2: Start detection proxy
-	wizard.PrintDetectionInstructions()
+	wizard.PrintDetectionInstructions(cfg)
 
 	// Create init proxy with detector
 	server := proxy.NewInitProxy(cfg, slog.Default(), shutdownMgr, certCache, wizard.GetDetector(), wizard.GetEvidence(), func(host string, finding *chaperoneInit.Finding) {
