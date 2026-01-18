@@ -9,6 +9,6 @@ func ShouldMITM(registry ServiceRegistry, hostname string) bool {
 	}
 
 	// Lookup the service for this hostname
-	_, found := registry.Lookup(hostname)
-	return found
+	_, err := registry.Lookup(hostname)
+	return err == nil
 }
