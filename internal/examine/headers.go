@@ -5,6 +5,39 @@ import (
 	"strings"
 )
 
+// alwaysIncludeHeaders are header names that should always be logged if present,
+// regardless of value heuristics. Case-insensitive matching.
+var alwaysIncludeHeaders = []string{
+	"authorization",
+	"x-api-key",
+	"x-auth-token",
+	"x-access-token",
+	"x-secret-token",
+	"api-key",
+	"api-token",
+	"access-token",
+	"x-token",
+	"x-key",
+}
+
+// knownAuthSchemes are auth scheme prefixes that indicate an authentication header.
+// If a header value starts with one of these, it's considered auth-relevant.
+// Case-insensitive matching.
+var knownAuthSchemes = []string{
+	"Bearer ",
+	"Basic ",
+	"Digest ",
+	"AWS4-HMAC-SHA256 ",
+	"AWS4-HMAC-SHA512 ",
+	"Hawk ",
+	"DPoP ",
+	"VAPID ",
+	"HOBA ",
+	"Mutual ",
+	"scram-sha-1 ",
+	"scram-sha-256 ",
+}
+
 // noAuthHeaderPatterns are patterns that match headers that never contain authentication.
 // Patterns are case-insensitive and support glob matching (* wildcard).
 // Requests will log all headers EXCEPT those matching these patterns to reduce noise.
@@ -89,17 +122,44 @@ var noAuthHeaderPatterns = []string{
 }
 
 // IsAuthRelevant returns true if the header could potentially contain authentication data.
-// Headers that are definitionally non-auth (content negotiation, caching directives, etc.)
-// return false to reduce noise in examine mode output.
+// It checks three criteria:
+// 1. If the header name is in the always-include list, return true
+// 2. If the value starts with a known auth scheme, return true
+// 3. Otherwise, apply exclusion patterns and value heuristics
 //
-// Matching is case-insensitive and supports glob patterns (* wildcard).
-func IsAuthRelevant(name string) bool {
+// Header name matching is case-insensitive.
+func IsAuthRelevant(name, value string) bool {
 	nameLower := strings.ToLower(name)
 
+	// Check if header name is in always-include list
+	for _, header := range alwaysIncludeHeaders {
+		if nameLower == header {
+			return true
+		}
+	}
+
+	// Check if value starts with a known auth scheme
+	for _, scheme := range knownAuthSchemes {
+		if strings.HasPrefix(value, scheme) {
+			return true
+		}
+		// Also check case-insensitively for schemes
+		if strings.HasPrefix(strings.ToLower(value), strings.ToLower(scheme)) {
+			return true
+		}
+	}
+
+	// Check exclusion patterns
 	for _, pattern := range noAuthHeaderPatterns {
 		if matchPattern(pattern, nameLower) {
 			return false
 		}
+	}
+
+	// Apply value heuristic: skip if value is less than 20 characters
+	// Real credentials (API keys, tokens, etc.) are substantially longer than this
+	if len(value) < 20 {
+		return false
 	}
 
 	return true

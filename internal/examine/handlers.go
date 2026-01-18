@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/elazarl/goproxy"
@@ -48,10 +49,19 @@ func ConnectHandler(certStore GoproxyCertStore, logger *slog.Logger) func(string
 }
 
 // RequestHandler creates a handler for examine mode that logs requests without modifying them.
-func RequestHandler(examineLogger *Logger) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+// If sentinelChan is non-nil, it will be closed (once) when sentinel is detected.
+func RequestHandler(examineLogger *Logger, sentinelChan chan struct{}) func(*http.Request, *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	var sentinelOnce sync.Once
 	return func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
 		// Log the request to help user discover auth patterns
-		examineLogger.LogRequest(r)
+		foundSentinel := examineLogger.LogRequest(r)
+
+		// Signal if sentinel was found
+		if foundSentinel && sentinelChan != nil {
+			sentinelOnce.Do(func() {
+				close(sentinelChan)
+			})
+		}
 
 		// Pass through unchanged - no modification
 		return r, nil

@@ -4,113 +4,157 @@ import "testing"
 
 func TestIsAuthRelevant(t *testing.T) {
 	tests := []struct {
-		name       string
-		headerName string
-		want       bool
+		name        string
+		headerName  string
+		headerValue string
+		want        bool
 	}{
 		// Headers that should NOT be considered auth-relevant
 		{
-			name:       "content-type is not auth",
-			headerName: "Content-Type",
-			want:       false,
+			name:        "content-type is not auth",
+			headerName:  "Content-Type",
+			headerValue: "application/json",
+			want:        false,
 		},
 		{
-			name:       "accept is not auth",
-			headerName: "Accept",
-			want:       false,
+			name:        "accept is not auth",
+			headerName:  "Accept",
+			headerValue: "application/json",
+			want:        false,
 		},
 		{
-			name:       "user-agent is not auth",
-			headerName: "User-Agent",
-			want:       false,
+			name:        "user-agent is not auth",
+			headerName:  "User-Agent",
+			headerValue: "Mozilla/5.0",
+			want:        false,
 		},
 		{
-			name:       "host is not auth",
-			headerName: "Host",
-			want:       false,
+			name:        "host is not auth",
+			headerName:  "Host",
+			headerValue: "example.com",
+			want:        false,
 		},
 		// Case insensitive matching
 		{
-			name:       "content-type lowercase is not auth",
-			headerName: "content-type",
-			want:       false,
+			name:        "content-type lowercase is not auth",
+			headerName:  "content-type",
+			headerValue: "text/html",
+			want:        false,
 		},
 		{
-			name:       "CONTENT-TYPE uppercase is not auth",
-			headerName: "CONTENT-TYPE",
-			want:       false,
+			name:        "CONTENT-TYPE uppercase is not auth",
+			headerName:  "CONTENT-TYPE",
+			headerValue: "application/json",
+			want:        false,
 		},
 		// Glob pattern matching - x-stainless-*
 		{
-			name:       "x-stainless-arch matches pattern",
-			headerName: "X-Stainless-Arch",
-			want:       false,
+			name:        "x-stainless-arch matches pattern",
+			headerName:  "X-Stainless-Arch",
+			headerValue: "arm64",
+			want:        false,
 		},
 		{
-			name:       "x-stainless-os matches pattern",
-			headerName: "X-Stainless-Os",
-			want:       false,
+			name:        "x-stainless-os matches pattern",
+			headerName:  "X-Stainless-Os",
+			headerValue: "linux",
+			want:        false,
 		},
 		{
-			name:       "x-stainless-runtime matches pattern",
-			headerName: "X-Stainless-Runtime",
-			want:       false,
+			name:        "x-stainless-runtime matches pattern",
+			headerName:  "X-Stainless-Runtime",
+			headerValue: "nodejs",
+			want:        false,
 		},
 		{
-			name:       "x-stainless- with any suffix matches",
-			headerName: "X-Stainless-Whatever",
-			want:       false,
+			name:        "x-stainless- with any suffix matches",
+			headerName:  "X-Stainless-Whatever",
+			headerValue: "some-value",
+			want:        false,
 		},
 		// Case insensitive glob matching
 		{
-			name:       "lowercase x-stainless-arch matches",
-			headerName: "x-stainless-arch",
-			want:       false,
+			name:        "lowercase x-stainless-arch matches",
+			headerName:  "x-stainless-arch",
+			headerValue: "x86_64",
+			want:        false,
 		},
 		{
-			name:       "UPPERCASE X-STAINLESS-OS matches",
-			headerName: "X-STAINLESS-OS",
-			want:       false,
+			name:        "UPPERCASE X-STAINLESS-OS matches",
+			headerName:  "X-STAINLESS-OS",
+			headerValue: "windows",
+			want:        false,
 		},
-		// Headers that SHOULD be considered auth-relevant
+		// Headers that SHOULD be considered auth-relevant (always-include list)
 		{
-			name:       "authorization is auth-relevant",
-			headerName: "Authorization",
-			want:       true,
-		},
-		{
-			name:       "x-api-key is auth-relevant",
-			headerName: "X-API-Key",
-			want:       true,
+			name:        "authorization with short value is auth-relevant",
+			headerName:  "Authorization",
+			headerValue: "Bearer sk-proj-abc123",
+			want:        true,
 		},
 		{
-			name:       "api-key is auth-relevant",
-			headerName: "API-Key",
-			want:       true,
+			name:        "x-api-key is auth-relevant",
+			headerName:  "X-API-Key",
+			headerValue: "secret-key-123456",
+			want:        true,
 		},
 		{
-			name:       "cookie is auth-relevant",
-			headerName: "Cookie",
-			want:       true,
+			name:        "api-key is auth-relevant",
+			headerName:  "API-Key",
+			headerValue: "my-secret-token",
+			want:        true,
+		},
+		// Value heuristics - minimum length (20 chars)
+		{
+			name:        "short value filtered out (< 20 chars)",
+			headerName:  "X-Request-ID",
+			headerValue: "abc",
+			want:        false,
 		},
 		{
-			name:       "custom-auth-header is auth-relevant",
-			headerName: "X-Custom-Auth",
-			want:       true,
+			name:        "19 char value filtered out",
+			headerName:  "X-Custom-Header",
+			headerValue: "1234567890123456789",
+			want:        false,
 		},
-		// Edge case: headers that start with x-stainless but don't match pattern
 		{
-			name:       "x-stainles (no trailing s) is auth-relevant",
-			headerName: "X-Stainles",
-			want:       true,
+			name:        "20 char value kept",
+			headerName:  "X-Custom-Header",
+			headerValue: "12345678901234567890",
+			want:        true,
+		},
+		{
+			name:        "metadata header filtered if < 20 chars",
+			headerName:  "Anthropic-Version",
+			headerValue: "2023-06-01",
+			want:        false,
+		},
+		{
+			name:        "long version number kept if >= 20 chars",
+			headerName:  "X-Version",
+			headerValue: "v1.2.3.4.5.6.7.8.9.10",
+			want:        true,
+		},
+		// Known auth schemes
+		{
+			name:        "Bearer scheme is auth-relevant",
+			headerName:  "X-Custom-Auth",
+			headerValue: "Bearer token123",
+			want:        true,
+		},
+		{
+			name:        "Basic scheme is auth-relevant",
+			headerName:  "X-Custom-Auth",
+			headerValue: "Basic dXNlcjpwYXNz",
+			want:        true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsAuthRelevant(tt.headerName)
+			got := IsAuthRelevant(tt.headerName, tt.headerValue)
 			if got != tt.want {
-				t.Errorf("IsAuthRelevant(%q) = %v, want %v", tt.headerName, got, tt.want)
+				t.Errorf("IsAuthRelevant(%q, %q) = %v, want %v", tt.headerName, tt.headerValue, got, tt.want)
 			}
 		})
 	}
