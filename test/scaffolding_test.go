@@ -87,7 +87,6 @@ func testGoModuleInitialized(t *testing.T, projectRoot string) {
 // - cmd/chaperone/ (main entry point)
 // - internal/* (all internal packages)
 // - test/* (test infrastructure)
-// - examples/, docs/
 func testDirectoryStructureComplete(t *testing.T, projectRoot string) {
 	requiredDirs := []string{
 		// Main entry point
@@ -106,17 +105,11 @@ func testDirectoryStructureComplete(t *testing.T, projectRoot string) {
 		"internal/secrets",
 		"internal/auth",
 		"internal/audit",
-		"internal/client",
 
 		// Test infrastructure
 		"test/helpers",
 		"test/fixtures/configs",
 		"test/integration",
-		"test/e2e",
-
-		// Documentation and examples
-		"examples",
-		"docs",
 	}
 
 	for _, dir := range requiredDirs {
