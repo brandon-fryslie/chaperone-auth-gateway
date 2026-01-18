@@ -120,6 +120,9 @@ func (h *TextHandler) Handle(_ context.Context, r slog.Record) error {
 	case "stripped auth headers from request":
 		// Skip - this is now handled as part of inject request
 		return nil
+	case "detail":
+		// Generic detail message formatted with request correlation tag
+		h.formatDetail(&b, r.Message, attrs)
 	default:
 		h.formatGeneric(&b, r.Message, r.Level, attrs)
 	}
@@ -137,26 +140,29 @@ func (h *TextHandler) formatExamineRequest(b *strings.Builder, attrs map[string]
 	requestID := getString(attrs, "request_id")
 	colorFg, colorBg, ok := getColorFromAttrs(attrs)
 	if !ok {
+		// This should not happen anymore with requestIDHandler in place
 		b.WriteString(red)
-		b.WriteString(bold)
-		b.WriteString("[ERROR: missing correlation color in request log - check requestIDHandler]")
+		b.WriteString("[ERR: no color]")
 		b.WriteString(reset)
-		return
+		b.WriteString(" ")
+		// Continue anyway
+		colorFg = ""
+		colorBg = ""
+	} else {
+		// [req:xxxx] tag with colored background - last 4 chars of request ID for correlation
+		shortID := requestID
+		if len(shortID) > 4 {
+			shortID = shortID[len(shortID)-4:]
+		}
+		b.WriteString(colorBg)
+		b.WriteString(colorFg)
+		b.WriteString(bold)
+		b.WriteString("[req:")
+		b.WriteString(shortID)
+		b.WriteString("]")
+		b.WriteString(reset)
+		b.WriteString(" ")
 	}
-
-	// [req:xxxx] tag with colored background - last 4 chars of request ID for correlation
-	shortID := requestID
-	if len(shortID) > 4 {
-		shortID = shortID[len(shortID)-4:]
-	}
-	b.WriteString(colorBg)
-	b.WriteString(colorFg)
-	b.WriteString(bold)
-	b.WriteString("[req:")
-	b.WriteString(shortID)
-	b.WriteString("]")
-	b.WriteString(reset)
-	b.WriteString(" ")
 
 	// Method
 	b.WriteString(method)
@@ -169,14 +175,40 @@ func (h *TextHandler) formatExamineRequest(b *strings.Builder, attrs map[string]
 		b.WriteString(host)
 	}
 
-	// Auth headers if present
+	// Auth headers if present - values are already truncated by examine logger
 	if authHeaders := getStringSlice(attrs, "auth_headers"); len(authHeaders) > 0 {
 		b.WriteString(dim)
 		b.WriteString(" | ")
 		b.WriteString(reset)
-		b.WriteString("auth: ")
 		b.WriteString(yellow)
-		b.WriteString(strings.Join(authHeaders, ", "))
+		b.WriteString(bold)
+
+		for i, header := range authHeaders {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+
+			// Parse "HeaderName: truncated_value" format
+			parts := strings.SplitN(header, ": ", 2)
+			if len(parts) == 2 {
+				headerName := parts[0]
+				headerValue := parts[1] // Already truncated
+
+				// Show header name in bold
+				b.WriteString(headerName)
+				b.WriteString(reset)
+				b.WriteString(dim)
+				b.WriteString("=")
+				b.WriteString(reset)
+				b.WriteString(yellow)
+
+				// Show truncated value
+				b.WriteString(headerValue)
+			} else {
+				// Fallback if format is unexpected
+				b.WriteString(header)
+			}
+		}
 		b.WriteString(reset)
 	}
 }
@@ -190,26 +222,29 @@ func (h *TextHandler) formatExamineResponse(b *strings.Builder, attrs map[string
 	requestID := getString(attrs, "request_id")
 	colorFg, colorBg, ok := getColorFromAttrs(attrs)
 	if !ok {
+		// This should not happen anymore with requestIDHandler in place
 		b.WriteString(red)
-		b.WriteString(bold)
-		b.WriteString("[ERROR: missing correlation color in response log - check requestIDHandler]")
+		b.WriteString("[ERR: no color]")
 		b.WriteString(reset)
-		return
+		b.WriteString(" ")
+		// Continue anyway
+		colorFg = ""
+		colorBg = ""
+	} else {
+		// [res:xxxx] tag with colored background - last 4 chars of request ID for correlation
+		shortID := requestID
+		if len(shortID) > 4 {
+			shortID = shortID[len(shortID)-4:]
+		}
+		b.WriteString(colorBg)
+		b.WriteString(colorFg)
+		b.WriteString(bold)
+		b.WriteString("[res:")
+		b.WriteString(shortID)
+		b.WriteString("]")
+		b.WriteString(reset)
+		b.WriteString(" ")
 	}
-
-	// [res:xxxx] tag with colored background - last 4 chars of request ID for correlation
-	shortID := requestID
-	if len(shortID) > 4 {
-		shortID = shortID[len(shortID)-4:]
-	}
-	b.WriteString(colorBg)
-	b.WriteString(colorFg)
-	b.WriteString(bold)
-	b.WriteString("[res:")
-	b.WriteString(shortID)
-	b.WriteString("]")
-	b.WriteString(reset)
-	b.WriteString(" ")
 
 	// Status code with semantic color
 	b.WriteString(h.statusColor(status))
@@ -363,6 +398,78 @@ func (h *TextHandler) formatInjectResponse(b *strings.Builder, attrs map[string]
 	}
 }
 
+// formatDetail: [req:xxxx] message with optional formatting from attrs
+// Uses "detail_text" attribute for the message content to display
+// Supports optional "detail_color" for text color (green, yellow, etc.)
+// Supports optional "detail_bg" for background (true = show background)
+func (h *TextHandler) formatDetail(b *strings.Builder, msg string, attrs map[string]any) {
+	requestID := getString(attrs, "request_id")
+	detailText := getString(attrs, "detail_text")
+	detailColor := getString(attrs, "detail_color")
+	showBg := getBool(attrs, "detail_bg")
+	colorFg, colorBg, ok := getColorFromAttrs(attrs)
+
+	if !ok {
+		// Fallback if no color - just show text without tag
+		b.WriteString(detailText)
+		return
+	}
+
+	// [req:xxxx] tag with colored background - last 4 chars of request ID for correlation
+	shortID := requestID
+	if len(shortID) > 4 {
+		shortID = shortID[len(shortID)-4:]
+	}
+	b.WriteString(colorBg)
+	b.WriteString(colorFg)
+	b.WriteString(bold)
+	b.WriteString("[req:")
+	b.WriteString(shortID)
+	b.WriteString("]")
+	b.WriteString(reset)
+	b.WriteString(" ")
+
+	// Apply color with optional background if specified
+	if detailColor == "green" {
+		if showBg {
+			b.WriteString(bg24(40, 100, 40)) // Dark green background
+			b.WriteString(fg24(150, 255, 150))
+			b.WriteString(bold)
+		} else {
+			b.WriteString(green)
+		}
+	} else if detailColor == "orange" {
+		if showBg {
+			b.WriteString(bg24(100, 60, 20)) // Deep dark orange background
+			b.WriteString(fg24(255, 180, 80)) // Bright orange text
+			b.WriteString(bold)
+		} else {
+			b.WriteString(fg24(255, 140, 0)) // Deep orange
+		}
+	} else if detailColor == "blue" {
+		if showBg {
+			b.WriteString(bg24(30, 50, 100))
+			b.WriteString(fg24(150, 200, 255))
+			b.WriteString(bold)
+		} else {
+			b.WriteString(blue)
+		}
+	} else if detailColor == "lightblue" {
+		if showBg {
+			b.WriteString(bg24(20, 40, 80))   // Dark blue background
+			b.WriteString(fg24(150, 200, 255)) // Light blue text
+			b.WriteString(bold)
+		} else {
+			b.WriteString(fg24(150, 200, 255)) // Light blue
+		}
+	}
+
+	b.WriteString(detailText)
+	if detailColor != "" {
+		b.WriteString(reset)
+	}
+}
+
 // formatGeneric: message | key=value key=value
 func (h *TextHandler) formatGeneric(b *strings.Builder, msg string, level slog.Level, attrs map[string]any) {
 	// Level badge
@@ -503,6 +610,15 @@ func getStringSlice(attrs map[string]any, key string) []string {
 		}
 	}
 	return nil
+}
+
+func getBool(attrs map[string]any, key string) bool {
+	if v, ok := attrs[key]; ok {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return false
 }
 
 // LogfmtHandler is a slog.Handler that outputs logs in logfmt format (key=value pairs)

@@ -177,6 +177,20 @@ func Warn(ctx context.Context, msg string, args ...any) {
 	logger.Warn(msg, redactedArgs...)
 }
 
+// Detail logs a formatted detail line with request correlation tag.
+// Useful for logging auxiliary information that should appear on its own line
+// with the same request tag as the originating request.
+// Args should include "detail_text" (required) and optionally "detail_color" (green/yellow/blue).
+// Example: log.Detail(ctx, "detail", "detail_text", "Found standard auth header: Authorization=Bearer s...IwAA", "detail_color", "green")
+func Detail(ctx context.Context, args ...any) {
+	if currentLevel > slog.LevelInfo {
+		return
+	}
+	logger := FromContext(ctx)
+	redactedArgs := redactSensitiveArgs(args)
+	logger.Info("detail", redactedArgs...)
+}
+
 // LogDuration logs the duration of an operation.
 func LogDuration(ctx context.Context, operation string, start time.Time) {
 	duration := time.Since(start)
