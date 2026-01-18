@@ -108,3 +108,59 @@ func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, s
 	}
 	return proxyServer
 }
+
+// TransportFlags represents CLI transport mode flags.
+type TransportFlags struct {
+	SocketPath string
+	HTTPMode   bool
+	HTTPPort   int
+	HTTPAddr   string
+}
+
+// ApplyTransportFlags applies CLI transport flags to the config.
+// Priority: --socket > --http/--port/--addr > config file > default (Unix socket).
+func ApplyTransportFlags(cfg *config.Config, flags TransportFlags) {
+	if flags.SocketPath != "" {
+		// Explicit socket path provided
+		cfg.Server.Socket = flags.SocketPath
+		cfg.Server.Port = 0 // Clear port to avoid validation warning
+	} else if flags.HTTPMode || flags.HTTPPort != 0 || flags.HTTPAddr != "" {
+		// HTTP mode requested via flags
+		cfg.Server.Socket = "" // Disable socket mode
+
+		if flags.HTTPPort != 0 {
+			cfg.Server.Port = flags.HTTPPort
+		} else if cfg.Server.Port == 0 {
+			cfg.Server.Port = 4010 // Default HTTP port
+		}
+
+		if flags.HTTPAddr != "" {
+			cfg.Server.Address = flags.HTTPAddr
+		} else if cfg.Server.Address == "" {
+			cfg.Server.Address = "127.0.0.1" // Default HTTP address
+		}
+	}
+	// else: use config file settings, or SetDefaults will apply Unix socket mode
+}
+
+// LogStartup logs the startup configuration with appropriate mode (socket or TCP).
+func LogStartup(ctx context.Context, cfg *config.Config, version, configPath string, serviceFilter []string) {
+	if cfg.Server.Socket != "" {
+		log.Info(ctx, "chaperone starting",
+			"version", version,
+			"config", configPath,
+			"socket", cfg.Server.Socket,
+		)
+	} else {
+		log.Info(ctx, "chaperone starting",
+			"version", version,
+			"config", configPath,
+			"address", cfg.Server.Address,
+			"port", cfg.Server.Port,
+		)
+	}
+
+	if len(serviceFilter) > 0 {
+		log.Info(ctx, "service filter enabled", "service", serviceFilter[0])
+	}
+}

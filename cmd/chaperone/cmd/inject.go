@@ -73,29 +73,12 @@ func runInject(cmd *cobra.Command, args []string) error {
 	}
 
 	// Apply CLI flags for transport mode
-	// Priority: --socket > --http/--port/--addr > config file > default (Unix socket)
-
-	if socketPath != "" {
-		// Explicit socket path provided
-		cfg.Server.Socket = socketPath
-		cfg.Server.Port = 0 // Clear port to avoid validation warning
-	} else if httpMode || httpPort != 0 || httpAddr != "" {
-		// HTTP mode requested via flags
-		cfg.Server.Socket = "" // Disable socket mode
-
-		if httpPort != 0 {
-			cfg.Server.Port = httpPort
-		} else if cfg.Server.Port == 0 {
-			cfg.Server.Port = 4010 // Default HTTP port
-		}
-
-		if httpAddr != "" {
-			cfg.Server.Address = httpAddr
-		} else if cfg.Server.Address == "" {
-			cfg.Server.Address = "127.0.0.1" // Default HTTP address
-		}
-	}
-	// else: use config file settings, or SetDefaults will apply Unix socket mode
+	orchestrate.ApplyTransportFlags(cfg, orchestrate.TransportFlags{
+		SocketPath: socketPath,
+		HTTPMode:   httpMode,
+		HTTPPort:   httpPort,
+		HTTPAddr:   httpAddr,
+	})
 
 	// Apply defaults and validate
 	cfg.SetDefaults()
@@ -107,24 +90,7 @@ func runInject(cmd *cobra.Command, args []string) error {
 	setupLogging(cfg)
 
 	// Log startup with appropriate mode
-	if cfg.Server.Socket != "" {
-		log.Info(ctx, "chaperone starting",
-			"version", version,
-			"config", configPath,
-			"socket", cfg.Server.Socket,
-		)
-	} else {
-		log.Info(ctx, "chaperone starting",
-			"version", version,
-			"config", configPath,
-			"address", cfg.Server.Address,
-			"port", cfg.Server.Port,
-		)
-	}
-
-	if len(serviceFilter) > 0 {
-		log.Info(ctx, "service filter enabled", "service", serviceFilter[0])
-	}
+	orchestrate.LogStartup(ctx, cfg, version, configPath, serviceFilter)
 
 	// Create shutdown manager
 	shutdownMgr := shutdown.NewManager(slog.Default())

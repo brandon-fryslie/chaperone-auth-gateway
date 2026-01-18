@@ -9,6 +9,7 @@ import (
 
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/log"
+	"github.com/bmf/chaperone/internal/run"
 )
 
 // TestSetupLogging validates the setupLogging helper function
@@ -289,9 +290,9 @@ func TestRunCommandProperties(t *testing.T) {
 
 // TestCreateTempLogFile verifies temporary log file creation
 func TestCreateTempLogFile(t *testing.T) {
-	f, path, err := createTempLogFile()
+	f, path, err := run.CreateTempLogFile()
 	if err != nil {
-		t.Fatalf("createTempLogFile failed: %v", err)
+		t.Fatalf("CreateTempLogFile failed: %v", err)
 	}
 	defer f.Close()
 	defer os.Remove(path)
