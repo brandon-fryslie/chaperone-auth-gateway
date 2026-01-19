@@ -16,7 +16,7 @@ GOFMT=gofmt
 GOLINT=golangci-lint
 
 # Build targets
-.PHONY: all build test test-race lint fmt clean help
+.PHONY: all build test test-race lint fmt clean release version help
 
 all: build
 
@@ -44,6 +44,18 @@ fmt:
 clean:
 	$(GOCLEAN)
 	rm -f $(BUILD_DIR)/$(BINARY)
+	rm -f *.out
+	rm -f coverage.html
+	rm -f coverage.txt
+	rm -rf dist/
+
+## release: Build release binaries for all platforms
+release:
+	./scripts/release.sh
+
+## version: Print the version from VERSION file
+version:
+	@cat VERSION
 
 ## help: Display this help message
 help:

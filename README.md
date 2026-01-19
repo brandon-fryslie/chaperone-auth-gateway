@@ -104,17 +104,56 @@ Applications never see or handle API keys - Chaperone injects them transparently
 
 ## Installation
 
+### From Releases (Recommended)
+
+Download pre-built binaries from the [Releases page](https://github.com/bmf/chaperone/releases).
+
+**macOS (Apple Silicon):**
+```bash
+curl -LO https://github.com/bmf/chaperone/releases/download/v0.1.0/chaperone-darwin-arm64
+chmod +x chaperone-darwin-arm64
+sudo mv chaperone-darwin-arm64 /usr/local/bin/chaperone
+```
+
+**macOS (Intel):**
+```bash
+curl -LO https://github.com/bmf/chaperone/releases/download/v0.1.0/chaperone-darwin-amd64
+chmod +x chaperone-darwin-amd64
+sudo mv chaperone-darwin-amd64 /usr/local/bin/chaperone
+```
+
+**Linux (x86_64):**
+```bash
+curl -LO https://github.com/bmf/chaperone/releases/download/v0.1.0/chaperone-linux-amd64
+chmod +x chaperone-linux-amd64
+sudo mv chaperone-linux-amd64 /usr/local/bin/chaperone
+```
+
+**Linux (ARM64):**
+```bash
+curl -LO https://github.com/bmf/chaperone/releases/download/v0.1.0/chaperone-linux-arm64
+chmod +x chaperone-linux-arm64
+sudo mv chaperone-linux-arm64 /usr/local/bin/chaperone
+```
+
+**Verify installation:**
+```bash
+chaperone version
+# Output: chaperone version 0.1.0
+```
+
 ### From Source
 
 ```bash
-git clone https://github.com/brandon-fryslie/chaperone-auth-gateway.git
-cd chaperone-auth-gateway
-go build ./cmd/chaperone
+git clone https://github.com/bmf/chaperone.git
+cd chaperone
+make build
+sudo mv ./chaperone /usr/local/bin/chaperone
 ```
 
-### From Releases
-
-Download the latest release from the [Releases page](https://github.com/brandon-fryslie/chaperone-auth-gateway/releases).
+**Requirements:**
+- Go 1.25.4 or later
+- Make (optional, can use `go build ./cmd/chaperone` directly)
 
 ## Quickstart
 
