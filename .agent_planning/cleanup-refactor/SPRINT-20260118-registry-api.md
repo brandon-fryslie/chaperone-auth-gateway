@@ -1,59 +1,138 @@
-# Sprint: registry-api - Consolidate Registry API Patterns
-Generated: 2026-01-18
-Confidence: MEDIUM
-Status: RESEARCH REQUIRED
+# Sprint: registry-api - Standardize Registry API Pattern
+**Generated:** 2026-01-18 (Updated after research)
+**Confidence:** HIGH
+**Status:** READY FOR IMPLEMENTATION
 
 ## Sprint Goal
-Standardize all registry APIs to use consistent `(value, error)` pattern for lookup failures.
+Standardize `ServiceRegistry.Lookup()` to use `(value, error)` pattern, aligning with other registries.
 
-## Known Elements
-- Secrets Registry already uses `Fetch(ctx, ref) (string, error)` - GOOD
-- Auth Registry uses `Get(key) (Strategy, error)` - GOOD
-- Service Registry uses `Lookup(key) (*Service, bool)` - INCONSISTENT
+## Scope
 
-## Unknowns to Resolve
-1. **Caller impact** - How many callers use `Lookup()` with the bool pattern?
-2. **Error messages** - What error context is useful when service not found?
+**Deliverables:**
+- Update `ServiceRegistry` interface: `Lookup(hostname) (*Service, error)`
+- Update all 6 callers to handle error instead of bool
+- Consistent error handling across all registries
 
-## Tentative Deliverables
-- Change `ServiceRegistry.Lookup()` to return `(*Service, error)`
-- Update all callers to handle error instead of bool
-- Consistent error handling patterns across registries
-
-## Research Tasks
-- [ ] Count callers of `ServiceRegistry.Lookup()`
-- [ ] Identify all places checking the bool return
-- [ ] Determine if any callers rely on bool for non-error flow
-
-## Work Items (Pending Research)
+## Work Items
 
 ### P0: Update Service Registry Interface
-**Acceptance Criteria (tentative):**
-- [ ] Change `Lookup(host) (*Service, bool)` to `Lookup(host) (*Service, error)`
-- [ ] Return descriptive error when service not found
-- [ ] Tests updated to check error instead of bool
+
+**Files:**
+- `internal/service/registry.go` - Interface definition
+- `internal/service/registry_impl.go` - Implementation
+
+**Acceptance Criteria:**
+- [ ] Change `Lookup(hostname string) (*Service, bool)` to `Lookup(hostname string) (*Service, error)`
+- [ ] Return `fmt.Errorf("service not found for hostname: %s", hostname)` when not found
+- [ ] Update implementation to return error instead of bool
+- [ ] Update interface tests in `test/service_registry_impl_test.go`
 - [ ] Tests pass
 
-### P0: Update All Callers
-**Acceptance Criteria (tentative):**
-- [ ] All callers updated to handle error
-- [ ] No bool checks remain for service lookup
-- [ ] Error handling is consistent with other registries
+**Technical Notes:**
+- Keep the same lookup logic (hostname matching)
+- Only change return signature: `(svc, false)` → `(nil, error)`
+- Error message should include hostname for debugging
 
-## Exit Criteria (to reach HIGH confidence)
-- [ ] Caller count documented
-- [ ] Error message format decided
-- [ ] All callers identified and change approach confirmed
+### P1: Update All Callers (6 locations)
+
+**Files:**
+- `internal/proxy/auth_handler.go` (2 locations: lines 36, 107)
+- `internal/proxy/policy_handler.go` (3 locations: lines 23, 111, 161)
+- `internal/service/matcher.go` (1 location: line 12)
+
+**Acceptance Criteria:**
+- [ ] All callers updated from `svc, found := Lookup()` to `svc, err := Lookup()`
+- [ ] All bool checks changed to error checks: `if !found` → `if err != nil`
+- [ ] Behavior unchanged: not found → pass through request
+- [ ] No new error logging needed (pass-through is expected behavior)
+- [ ] Tests pass
+
+**Change Pattern:**
+```go
+// Before
+svc, found := registry.Lookup(r.Host)
+if !found {
+    return r, nil  // Pass through
+}
+
+// After
+svc, err := registry.Lookup(r.Host)
+if err != nil {
+    return r, nil  // Pass through
+}
+```
+
+**Special Case (matcher.go):**
+```go
+// Before
+_, found := registry.Lookup(hostname)
+return found
+
+// After
+_, err := registry.Lookup(hostname)
+return err == nil  // true if found, false if error
+```
+
+### P2: Verify Consistency
+
+**Acceptance Criteria:**
+- [ ] All three registries now use `(value, error)` pattern
+- [ ] No bool returns remain in registry interfaces
+- [ ] Error messages are descriptive and consistent
+- [ ] All tests pass (unit + integration)
 
 ## Dependencies
-- Sprint: commit-wip (clean baseline)
-- Should run AFTER split-handlers (handlers are main callers)
+- Sprint: split-handlers (COMPLETE) - handlers are main callers
+- Sprint: split-examine (COMPLETE) - no dependencies, but good to have clean baseline
 
 ## Risks
+
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Many callers affected | MEDIUM | MEDIUM | Research first |
-| Semantic change breaks assumptions | LOW | HIGH | Review each caller |
+| Callers missed | LOW | HIGH | Research found all 6, grep confirmed |
+| Tests break | LOW | LOW | Tests use same pattern, easy to fix |
+| Semantic mismatch | VERY LOW | LOW | All callers just need "found vs not found" |
 
-## Notes
-This sprint is LOWER PRIORITY than the file splits. The current API works; this is a consistency improvement. Consider deferring to v0.2 if time-constrained.
+## Implementation Notes
+
+**Order of changes:**
+1. Update interface definition (`registry.go`)
+2. Update implementation (`registry_impl.go`)
+3. Update tests (`test/service_registry_impl_test.go`)
+4. Update all 6 callers (one file at a time, commit each)
+5. Run full test suite
+
+**Commit strategy:**
+- Commit 1: Update interface + implementation + tests
+- Commit 2: Update auth_handler.go callers
+- Commit 3: Update policy_handler.go callers
+- Commit 4: Update matcher.go caller
+
+**Why this matters:**
+- Consistency with other registries (Secrets, Auth Strategy)
+- Standard Go idiom for "value or error"
+- More extensible (future could distinguish error types)
+- Cleaner API surface
+
+## Verification Commands
+
+```bash
+# Ensure all callers updated
+grep -r "registry.Lookup" internal/ | grep -v "// "
+
+# Build + test
+go build ./...
+go test ./...
+go test -race ./...
+go vet ./...
+
+# Verify no bool pattern remains
+grep "found :=" internal/proxy/*.go internal/service/*.go
+```
+
+## Success Criteria
+
+All three registry types now use consistent `(value, error)` API:
+- ✅ SecretsRegistry: `Fetch(ctx, ref) (string, error)`
+- ✅ AuthRegistry: `Get(key) (Strategy, error)`
+- ✅ ServiceRegistry: `Lookup(hostname) (*Service, error)`

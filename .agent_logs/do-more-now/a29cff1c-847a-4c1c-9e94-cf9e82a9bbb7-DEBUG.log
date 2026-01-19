@@ -1,0 +1,58 @@
+2026-01-10T23:26:22.903091 ============================================================
+2026-01-10T23:26:22.903332 init.py: SESSION START
+2026-01-10T23:26:22.903466 init.py: session_id=a29cff1c-847a-4c1c-9e94-cf9e82a9bbb7
+2026-01-10T23:26:22.903653 init.py: cwd=/Users/bmf/code/brandon-fryslie_chaperone-auth-gateway
+2026-01-10T23:26:22.903767 init.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'hook_event_name', 'source']
+2026-01-10T23:26:22.904116 init.py: hook_event_name=SessionStart
+2026-01-10T23:26:22.904308 init.py: transcript_path=/Users/bmf/.claude/projects/-Users-bmf-code-brandon-fryslie-chaperone-auth-gateway/a29cff1c-847a-4c1c-9e94-cf9e82a9bbb7.jsonl
+2026-01-10T23:26:22.904516 init.py: directory exists: .agent_logs/do-more-now
+2026-01-10T23:26:22.904648 init.py: directory exists: .agent_logs/do-more-now/partials
+2026-01-10T23:26:22.904749 init.py: initialization complete
+2026-01-10T23:29:49.493260 ------------------------------------------------------------
+2026-01-10T23:29:49.493524 aggregate-exec.py: STOP HOOK TRIGGERED
+2026-01-10T23:29:49.493579 aggregate-exec.py: session_id=a29cff1c-847a-4c1c-9e94-cf9e82a9bbb7
+2026-01-10T23:29:49.493645 aggregate-exec.py: cwd=/Users/bmf/code/brandon-fryslie_chaperone-auth-gateway
+2026-01-10T23:29:49.493807 aggregate-exec.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'permission_mode', 'hook_event_name', 'stop_hook_active']
+2026-01-10T23:29:49.494451 aggregate-exec.py: hook_event_name=Stop
+2026-01-10T23:29:49.494636 aggregate-exec.py: permission_mode=bypassPermissions
+2026-01-10T23:29:49.494767 aggregate-exec.py: stop_hook_active=False
+2026-01-10T23:29:49.494862 aggregate-exec.py: checking partials_dir=.agent_logs/do-more-now/partials
+2026-01-10T23:29:49.494976 aggregate-exec.py: scanning for partial files...
+2026-01-10T23:29:49.495668 aggregate-exec.py: found 0 files matching *-PARTIAL-*.txt
+2026-01-10T23:29:49.495790 aggregate-exec.py: no partial files, nothing to aggregate
+2026-01-11T04:19:04.861069 ------------------------------------------------------------
+2026-01-11T04:19:04.861904 aggregate-exec.py: STOP HOOK TRIGGERED
+2026-01-11T04:19:04.862009 aggregate-exec.py: session_id=a29cff1c-847a-4c1c-9e94-cf9e82a9bbb7
+2026-01-11T04:19:04.862137 aggregate-exec.py: cwd=/Users/bmf/code/brandon-fryslie_chaperone-auth-gateway
+2026-01-11T04:19:04.862250 aggregate-exec.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'permission_mode', 'hook_event_name', 'stop_hook_active']
+2026-01-11T04:19:04.862333 aggregate-exec.py: hook_event_name=Stop
+2026-01-11T04:19:04.862408 aggregate-exec.py: permission_mode=bypassPermissions
+2026-01-11T04:19:04.862505 aggregate-exec.py: stop_hook_active=False
+2026-01-11T04:19:04.862603 aggregate-exec.py: checking partials_dir=.agent_logs/do-more-now/partials
+2026-01-11T04:19:04.862683 aggregate-exec.py: scanning for partial files...
+2026-01-11T04:19:04.863141 aggregate-exec.py: found 0 files matching *-PARTIAL-*.txt
+2026-01-11T04:19:04.863252 aggregate-exec.py: no partial files, nothing to aggregate
+2026-01-11T05:09:38.041017 ------------------------------------------------------------
+2026-01-11T05:09:38.042027 aggregate-exec.py: STOP HOOK TRIGGERED
+2026-01-11T05:09:38.042322 aggregate-exec.py: session_id=a29cff1c-847a-4c1c-9e94-cf9e82a9bbb7
+2026-01-11T05:09:38.042653 aggregate-exec.py: cwd=/Users/bmf/code/brandon-fryslie_chaperone-auth-gateway
+2026-01-11T05:09:38.042996 aggregate-exec.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'permission_mode', 'hook_event_name', 'stop_hook_active']
+2026-01-11T05:09:38.043187 aggregate-exec.py: hook_event_name=Stop
+2026-01-11T05:09:38.043414 aggregate-exec.py: permission_mode=default
+2026-01-11T05:09:38.043555 aggregate-exec.py: stop_hook_active=False
+2026-01-11T05:09:38.043704 aggregate-exec.py: checking partials_dir=.agent_logs/do-more-now/partials
+2026-01-11T05:09:38.043820 aggregate-exec.py: scanning for partial files...
+2026-01-11T05:09:38.044353 aggregate-exec.py: found 0 files matching *-PARTIAL-*.txt
+2026-01-11T05:09:38.044465 aggregate-exec.py: no partial files, nothing to aggregate
+2026-01-11T05:15:29.715237 ------------------------------------------------------------
+2026-01-11T05:15:29.715650 aggregate-exec.py: STOP HOOK TRIGGERED
+2026-01-11T05:15:29.715777 aggregate-exec.py: session_id=a29cff1c-847a-4c1c-9e94-cf9e82a9bbb7
+2026-01-11T05:15:29.715938 aggregate-exec.py: cwd=/Users/bmf/code/brandon-fryslie_chaperone-auth-gateway
+2026-01-11T05:15:29.716039 aggregate-exec.py: hook_input keys=['session_id', 'transcript_path', 'cwd', 'permission_mode', 'hook_event_name', 'stop_hook_active']
+2026-01-11T05:15:29.716130 aggregate-exec.py: hook_event_name=Stop
+2026-01-11T05:15:29.716212 aggregate-exec.py: permission_mode=default
+2026-01-11T05:15:29.716294 aggregate-exec.py: stop_hook_active=False
+2026-01-11T05:15:29.716404 aggregate-exec.py: checking partials_dir=.agent_logs/do-more-now/partials
+2026-01-11T05:15:29.716491 aggregate-exec.py: scanning for partial files...
+2026-01-11T05:15:29.717245 aggregate-exec.py: found 0 files matching *-PARTIAL-*.txt
+2026-01-11T05:15:29.717454 aggregate-exec.py: no partial files, nothing to aggregate

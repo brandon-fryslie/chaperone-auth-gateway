@@ -1,0 +1,88 @@
+Agent: iterative-implementer | 2026-01-18 11:46:28
+Mode: manual
+Completed: 3 work items | Files: 6 | Commits: 4
+Cache invalidated: runtime-proxy-handlers.md
+Status: complete
+
+## Work Completed
+
+### P0: Update Service Registry Interface ✓
+- Updated interface signature: Lookup(hostname) (*Service, error)
+- Updated implementation to return descriptive error
+- Updated tests to check error instead of bool
+- Commit: 3135abe "refactor(service): change Lookup to return error instead of bool"
+
+### P1: Update All Callers (6 locations) ✓
+- auth_handler.go: 2 locations updated (lines 36, 107)
+  - Commit: d6641ac "refactor(proxy): update auth_handler to use error pattern"
+- policy_handler.go: 3 locations updated (lines 23, 111, 161)
+  - Commit: 2ecccf3 "refactor(proxy): update policy_handler to use error pattern"
+- matcher.go: 1 location updated (line 12, returns err == nil)
+  - Commit: 6adc004 "refactor(service): update matcher to use error pattern"
+
+### P2: Verify Consistency ✓
+- All three registries now use (value, error) pattern:
+  - SecretsRegistry: Fetch(ctx, ref) (string, error) ✓
+  - AuthRegistry: Get(key) (Strategy, error) ✓
+  - ServiceRegistry: Lookup(hostname) (*Service, error) ✓
+
+## Verification Results
+
+All verification commands passed:
+- go build ./... - PASS
+- go test ./... - PASS (all packages)
+- go test -race ./... - PASS (no race conditions)
+- go vet ./... - PASS (no warnings)
+
+Grep verification:
+- All 6 Lookup calls use error pattern ✓
+- No "found :=" pattern in callers ✓
+- Only internal map check in registry_impl.go remains (correct)
+
+## Files Modified
+
+1. internal/service/registry.go - Interface signature
+2. internal/service/registry_impl.go - Implementation
+3. internal/service/matcher.go - Caller (special case: returns bool)
+4. internal/proxy/auth_handler.go - 2 callers
+5. internal/proxy/policy_handler.go - 3 callers
+6. test/service_registry_impl_test.go - Tests
+
+## Behavior Verification
+
+No behavior changes - this was pure refactoring:
+- Requests still pass through when service not found
+- Error handling semantics unchanged (err != nil replaces !found)
+- All integration tests pass without modification
+- matcher.go correctly converts error to bool (err == nil)
+
+## API Consistency Achieved
+
+All registry interfaces now follow standard Go idiom:
+```go
+type SecretsRegistry interface {
+    Fetch(ctx, ref) (string, error)
+}
+
+type AuthRegistry interface {
+    Get(name) (Strategy, error)
+}
+
+type ServiceRegistry interface {
+    Lookup(hostname) (*Service, error)  // ← NOW CONSISTENT
+}
+```
+
+## Cache Invalidation
+
+Removed stale cache entry:
+- runtime-proxy-handlers.md (referenced modified auth_handler.go and policy_handler.go)
+
+Updated INDEX.md to reflect removal.
+
+## Notes
+
+- All 4 commits are atomic and can be reverted independently if needed
+- Error message format: "service not found for hostname: %s"
+- No new logging added (pass-through is expected behavior)
+- Special case in matcher.go: converts error to bool as designed
