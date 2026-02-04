@@ -1,2 +1,5 @@
 dist/
 bin/
+.beands/
+.beads/
+.idea/
