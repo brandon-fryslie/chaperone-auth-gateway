@@ -37,6 +37,19 @@ type Server struct {
 	started     bool
 }
 
+// createHTTPServer initializes the HTTP server with standard timeout configuration.
+// This is the single source of truth for server timeouts across all proxy modes.
+func (s *Server) createHTTPServer() {
+	s.httpServer = &http.Server{
+		Handler:           s.proxy,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       1 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		// WriteTimeout is intentionally omitted to support streaming responses
+		// (SSE, GraphQL subscriptions, chunked transfer encoding)
+	}
+}
+
 // New creates a new proxy server with the given configuration.
 // This creates a transparent proxy without MITM capabilities.
 func New(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager) *Server {
@@ -60,13 +73,7 @@ func New(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager)
 	s.proxy = proxy
 
 	// Create HTTP server with the proxy
-	s.httpServer = &http.Server{
-		Handler:           proxy,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       1 * time.Second,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	s.createHTTPServer()
 
 	// Register shutdown function
 	if shutdownMgr != nil {
@@ -185,13 +192,7 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	s.proxy = proxy
 
 	// Create HTTP server with the proxy
-	s.httpServer = &http.Server{
-		Handler:           proxy,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       1 * time.Second,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	s.createHTTPServer()
 
 	// Register shutdown function
 	if shutdownMgr != nil {
@@ -220,7 +221,9 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 
 	// Create goproxy server
 	proxy := goproxy.NewProxyHttpServer()
-	proxy.Verbose = (cfg.Logging.Level == "debug")
+	// NEVER enable proxy.Verbose in examine mode - it writes to stdout and breaks
+	// full-screen terminal applications. Use structured logging instead.
+	proxy.Verbose = false
 
 	// Disable proxy for upstream connections to avoid proxy loops
 	proxy.Tr.Proxy = nil
@@ -249,13 +252,7 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	s.proxy = proxy
 
 	// Create HTTP server with the proxy
-	s.httpServer = &http.Server{
-		Handler:           proxy,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       1 * time.Second,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	s.createHTTPServer()
 
 	// Register shutdown function
 	if shutdownMgr != nil {
@@ -300,13 +297,7 @@ func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown
 	s.proxy = proxy
 
 	// Create HTTP server with the proxy
-	s.httpServer = &http.Server{
-		Handler:           proxy,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       1 * time.Second,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	s.createHTTPServer()
 
 	// Register shutdown function
 	if shutdownMgr != nil {

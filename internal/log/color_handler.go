@@ -211,6 +211,62 @@ func (h *TextHandler) formatExamineRequest(b *strings.Builder, attrs map[string]
 		}
 		b.WriteString(reset)
 	}
+
+	// Query parameters if present
+	if params := getStringSlice(attrs, "params"); len(params) > 0 {
+		b.WriteString("\n    ")
+		b.WriteString(dim)
+		b.WriteString("params: ")
+		b.WriteString(reset)
+		b.WriteString(cyan)
+		for i, param := range params {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(param)
+		}
+		b.WriteString(reset)
+	}
+
+	// Cookies if present
+	if cookies := getStringSlice(attrs, "cookies"); len(cookies) > 0 {
+		b.WriteString("\n    ")
+		b.WriteString(dim)
+		b.WriteString("cookies: ")
+		b.WriteString(reset)
+		b.WriteString(magenta)
+		for i, cookie := range cookies {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(cookie)
+		}
+		b.WriteString(reset)
+	}
+
+	// Request body if present (already truncated by logger)
+	if body := getString(attrs, "body"); body != "" {
+		b.WriteString("\n    ")
+		b.WriteString(dim)
+		b.WriteString("body: ")
+		b.WriteString(reset)
+		b.WriteString(gray)
+		// Body may have newlines - indent them
+		indented := strings.ReplaceAll(body, "\n", "\n    ")
+		b.WriteString(indented)
+		b.WriteString(reset)
+	}
+
+	// Body error if present
+	if bodyErr := getString(attrs, "body_error"); bodyErr != "" {
+		b.WriteString("\n    ")
+		b.WriteString(dim)
+		b.WriteString("body_error: ")
+		b.WriteString(reset)
+		b.WriteString(red)
+		b.WriteString(bodyErr)
+		b.WriteString(reset)
+	}
 }
 
 // formatExamineResponse: [res:a3f2] 200 GET /v1/chat @ api.example.com
@@ -264,6 +320,62 @@ func (h *TextHandler) formatExamineResponse(b *strings.Builder, attrs map[string
 		b.WriteString(" @ ")
 		b.WriteString(reset)
 		b.WriteString(host)
+	}
+
+	// Auth headers in response if present
+	if authHeaders := getStringSlice(attrs, "auth_headers"); len(authHeaders) > 0 {
+		b.WriteString("\n    ")
+		b.WriteString(dim)
+		b.WriteString("auth_headers: ")
+		b.WriteString(reset)
+		b.WriteString(yellow)
+		for i, header := range authHeaders {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(header)
+		}
+		b.WriteString(reset)
+	}
+
+	// Set-Cookie headers if present
+	if setCookies := getStringSlice(attrs, "set_cookies"); len(setCookies) > 0 {
+		b.WriteString("\n    ")
+		b.WriteString(dim)
+		b.WriteString("set_cookies: ")
+		b.WriteString(reset)
+		b.WriteString(magenta)
+		for i, cookie := range setCookies {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(cookie)
+		}
+		b.WriteString(reset)
+	}
+
+	// Response body if present (already truncated by logger)
+	if body := getString(attrs, "body"); body != "" {
+		b.WriteString("\n    ")
+		b.WriteString(dim)
+		b.WriteString("body: ")
+		b.WriteString(reset)
+		b.WriteString(gray)
+		// Body may have newlines - indent them
+		indented := strings.ReplaceAll(body, "\n", "\n    ")
+		b.WriteString(indented)
+		b.WriteString(reset)
+	}
+
+	// Body error if present
+	if bodyErr := getString(attrs, "body_error"); bodyErr != "" {
+		b.WriteString("\n    ")
+		b.WriteString(dim)
+		b.WriteString("body_error: ")
+		b.WriteString(reset)
+		b.WriteString(red)
+		b.WriteString(bodyErr)
+		b.WriteString(reset)
 	}
 }
 

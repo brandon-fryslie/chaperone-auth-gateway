@@ -3,6 +3,7 @@
 package examine
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -113,17 +114,27 @@ func (l *Logger) LogRequest(r *http.Request) bool {
 
 	// Request body (optional)
 	if l.config.ShowBody && r.Body != nil {
-		body, err := io.ReadAll(io.LimitReader(r.Body, int64(l.config.MaxBodyBytes)))
+		// Use TeeReader to copy ENTIRE body without consuming original stream
+		var buf bytes.Buffer
+		teeReader := io.TeeReader(r.Body, &buf)
+
+		// Read ENTIRE body (not limited) to ensure proper restoration
+		body, err := io.ReadAll(teeReader)
+		r.Body.Close()
+
 		if err != nil {
 			args = append(args, "body_error", err.Error())
 		} else if len(body) > 0 {
-			truncated := len(body) == l.config.MaxBodyBytes
+			// Truncate only what we LOG, not what we buffer
 			bodyStr := string(body)
-			if truncated {
-				bodyStr += "... (truncated)"
+			if len(body) > l.config.MaxBodyBytes {
+				bodyStr = string(body[:l.config.MaxBodyBytes]) + "... (truncated)"
 			}
 			args = append(args, "body", bodyStr)
 		}
+
+		// Replace body with FULL buffer copy for downstream handlers
+		r.Body = io.NopCloser(&buf)
 	}
 
 	// Log the main request
@@ -238,17 +249,27 @@ func (l *Logger) LogResponse(resp *http.Response) {
 
 	// Response body (optional)
 	if l.config.ShowBody && resp.Body != nil {
-		body, err := io.ReadAll(io.LimitReader(resp.Body, int64(l.config.MaxBodyBytes)))
+		// Use TeeReader to copy ENTIRE body without consuming original stream
+		var buf bytes.Buffer
+		teeReader := io.TeeReader(resp.Body, &buf)
+
+		// Read ENTIRE body (not limited) to ensure proper restoration
+		body, err := io.ReadAll(teeReader)
+		resp.Body.Close()
+
 		if err != nil {
 			args = append(args, "body_error", err.Error())
 		} else if len(body) > 0 {
-			truncated := len(body) == l.config.MaxBodyBytes
+			// Truncate only what we LOG, not what we buffer
 			bodyStr := string(body)
-			if truncated {
-				bodyStr += "... (truncated)"
+			if len(body) > l.config.MaxBodyBytes {
+				bodyStr = string(body[:l.config.MaxBodyBytes]) + "... (truncated)"
 			}
 			args = append(args, "body", bodyStr)
 		}
+
+		// Replace body with FULL buffer copy for downstream handlers
+		resp.Body = io.NopCloser(&buf)
 	}
 
 	log.Info(ctx, "response", args...)

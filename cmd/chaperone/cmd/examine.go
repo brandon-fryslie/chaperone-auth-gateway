@@ -35,16 +35,23 @@ const (
 
 var (
 	// Examine flags
-	showBody      bool
-	showParams    bool
-	showCookies   bool
-	showResponse  bool
-	outputFile    string
-	enableHAR     bool
-	harOutputFile string
-	allHeaders    bool
-	sentinelValue string
-	envVars       []string // Can be passed multiple times with -e/--env
+	showBody       bool
+	showParams     bool
+	showCookies    bool
+	showResponse   bool
+	outputFile     string
+	enableHAR      bool
+	harOutputFile  string
+	enableJSONL    bool
+	jsonlOutputFile string
+	allHeaders     bool
+	sentinelValue  string
+	envVars        []string // Can be passed multiple times with -e/--env
+	// Transport flags (like inject command)
+	examineSocketPath string
+	examineHTTPMode   bool
+	examineHTTPPort   int
+	examineHTTPAddr   string
 )
 
 // formatCommand formats a command slice as a space-separated string
@@ -195,9 +202,17 @@ func init() {
 	examineCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Save results to file (enables all flags)")
 	examineCmd.Flags().BoolVar(&enableHAR, "har", false, "Enable HAR recording (HTTP Archive format)")
 	examineCmd.Flags().StringVar(&harOutputFile, "har-output", "", "Custom HAR output file path (implies --har)")
+	examineCmd.Flags().BoolVar(&enableJSONL, "jsonl", false, "Enable JSONL recording (JSON Lines format for API analysis)")
+	examineCmd.Flags().StringVar(&jsonlOutputFile, "jsonl-output", "", "Custom JSONL output file path (implies --jsonl)")
 	examineCmd.Flags().BoolVar(&allHeaders, "all-headers", false, "Show all headers (disable filtering heuristics)")
 	examineCmd.Flags().StringVar(&sentinelValue, "sentinel", "chaperone-sentinel", "Sentinel value to look for in auth headers to confirm correct header")
 	examineCmd.Flags().StringSliceVarP(&envVars, "env", "e", []string{}, "Set environment variable for command (format: VAR=value, can be used multiple times)")
+
+	// Transport mode flags (matching inject command)
+	examineCmd.Flags().StringVar(&examineSocketPath, "socket", "", "Unix socket path (default: auto-generated)")
+	examineCmd.Flags().BoolVar(&examineHTTPMode, "http", false, "Use HTTP/TCP mode instead of Unix socket")
+	examineCmd.Flags().IntVar(&examineHTTPPort, "port", 0, "Port to listen on (implies --http, default 4010)")
+	examineCmd.Flags().StringVar(&examineHTTPAddr, "addr", "", "Address to listen on (implies --http, default 127.0.0.1)")
 }
 
 func runExamine(cmd *cobra.Command, args []string) error {
@@ -222,6 +237,11 @@ func runExamine(cmd *cobra.Command, args []string) error {
 	// If har-output is specified, enable HAR recording
 	if harOutputFile != "" {
 		enableHAR = true
+	}
+
+	// If jsonl-output is specified, enable JSONL recording
+	if jsonlOutputFile != "" {
+		enableJSONL = true
 	}
 
 	// Minimal config - just need server address/port
@@ -256,6 +276,14 @@ func runExamine(cmd *cobra.Command, args []string) error {
 			// Note: Ignore Socket setting - examine mode uses TCP
 		}
 	}
+
+	// Apply CLI flags for transport mode
+	orchestrate.ApplyTransportFlags(cfg, orchestrate.TransportFlags{
+		SocketPath: examineSocketPath,
+		HTTPMode:   examineHTTPMode,
+		HTTPPort:   examineHTTPPort,
+		HTTPAddr:   examineHTTPAddr,
+	})
 
 	cfg.SetDefaults()
 

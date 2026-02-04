@@ -3,7 +3,7 @@
 
 # Configuration
 BINARY := "chaperone"
-BUILD_DIR := "."
+BUILD_DIR := "./dist"
 MAIN_PACKAGE := "github.com/bmf/chaperone"
 CMD_DIR := "cmd/chaperone"
 GO_VERSION := "1.25"
