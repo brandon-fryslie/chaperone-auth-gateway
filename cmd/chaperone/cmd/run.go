@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/bmf/chaperone/internal/config"
@@ -151,46 +152,46 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create FD config with stdin, stdout, stderr
-	// Default stdin to "inherit" for interactive applications
-	stdinMode := "inherit"
-	if svc.Run.Stdin != "" {
-		stdinMode = svc.Run.Stdin
-	}
-	fdConfig, err := run.NewFDConfig(stdinMode, svc.Run.Stdout, svc.Run.Stderr)
-	if err != nil {
-		shutdownMgr.Shutdown(5 * time.Second)
-		return fmt.Errorf("failed to create FD config: %w", err)
-	}
+	// Print log file path to stderr BEFORE starting child
+	// After this, all chaperone output goes to the log file only
+	fmt.Fprintf(os.Stderr, "Log file: %s\n", logPath)
 
-	// Create process manager
-	pm, err := run.NewProcessManager(ctx, svc.Run.Command, svc.Run.Args, childEnv, fdConfig)
-	if err != nil {
-		shutdownMgr.Shutdown(5 * time.Second)
-		return fmt.Errorf("failed to create process manager: %w", err)
-	}
-
-	// Start child process
 	log.Info(ctx, "starting child process",
 		"command", svc.Run.Command,
 		"args", svc.Run.Args,
 	)
-	if err := pm.Start(); err != nil {
+
+	// Create command - DO NOT use ProcessManager to avoid process group isolation
+	// We want the child to receive signals directly from the terminal
+	childCmd := exec.Command(svc.Run.Command, svc.Run.Args...)
+	childCmd.Env = childEnv
+	childCmd.Stdin = os.Stdin
+	childCmd.Stdout = os.Stdout
+	childCmd.Stderr = os.Stderr
+	// No Setpgid - child stays in same process group for proper signal handling
+
+	// Start child process
+	if err := childCmd.Start(); err != nil {
 		shutdownMgr.Shutdown(5 * time.Second)
 		return fmt.Errorf("failed to start child process: %w", err)
 	}
 
-	log.Info(ctx, "child process started successfully")
+	log.Info(ctx, "child process started successfully", "pid", childCmd.Process.Pid)
 
-	// Print log file path to stderr before passing control to child
-	// This informs the user where to find logs without polluting stdout
-	fmt.Fprintf(os.Stderr, "Log file: %s\n", logPath)
+	// Wait for child to exit
+	var exitCode int
+	if err := childCmd.Wait(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = 1
+		}
+	}
 
-	// Run process with signal forwarding
-	childExitCode := run.RunWithSignals(ctx, pm)
+	log.Info(ctx, "child process exited", "exit_code", exitCode)
 
-	// Cleanup and exit
-	exitCode := run.CleanupProcess(ctx, pm, shutdownMgr, childExitCode)
+	// Cleanup proxy and exit with child's exit code
+	shutdownMgr.Shutdown(5 * time.Second)
 	os.Exit(exitCode)
 	return nil // Never reached
 }

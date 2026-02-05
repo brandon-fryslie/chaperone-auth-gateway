@@ -283,7 +283,7 @@ func TestEnvBuilder_Chaining(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load env file: %v", err)
 	}
-	eb.SetProxyVars("/tmp/test.sock", "myservice")
+	eb.SetProxyVars("http://127.0.0.1:8080", "myservice")
 
 	env := eb.Build()
 	vars := make(map[string]string)
@@ -310,8 +310,8 @@ func TestEnvBuilder_Chaining(t *testing.T) {
 	}
 
 	// Should have proxy vars
-	if vars["HTTP_PROXY"] != "http+unix:///tmp/test.sock" {
-		t.Errorf("HTTP_PROXY=%q, want http+unix:///tmp/test.sock", vars["HTTP_PROXY"])
+	if vars["HTTP_PROXY"] != "http://127.0.0.1:8080" {
+		t.Errorf("HTTP_PROXY=%q, want http://127.0.0.1:8080", vars["HTTP_PROXY"])
 	}
 }
 
@@ -319,15 +319,15 @@ func TestEnvBuilder_Chaining_WithCAEnvVars(t *testing.T) {
 	// Test that SetCAEnvVars can be chained with other methods
 	eb := NewEnvBuilder()
 	eb.InheritParent()
-	eb.SetProxyVars("/tmp/test.sock", "myservice")
+	eb.SetProxyVars("http://127.0.0.1:8080", "myservice")
 	eb.SetCAEnvVars("/tmp/ca-cert.pem", nil)
 
 	env := eb.Build()
 	vars := parseEnvSlice(env)
 
 	// Should have proxy vars
-	if vars["HTTP_PROXY"] != "http+unix:///tmp/test.sock" {
-		t.Errorf("HTTP_PROXY=%q, want http+unix:///tmp/test.sock", vars["HTTP_PROXY"])
+	if vars["HTTP_PROXY"] != "http://127.0.0.1:8080" {
+		t.Errorf("HTTP_PROXY=%q, want http://127.0.0.1:8080", vars["HTTP_PROXY"])
 	}
 
 	// Should have CA vars

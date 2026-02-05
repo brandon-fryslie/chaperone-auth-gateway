@@ -131,8 +131,7 @@ func testSubcommandsRegistered(t *testing.T) {
 	commands := rootCmd.Commands()
 
 	expectedCommands := map[string]bool{
-		"init": false,
-		"run":  false,
+		"run": false,
 	}
 
 	for _, cmd := range commands {
