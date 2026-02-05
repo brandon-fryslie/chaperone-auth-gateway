@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -58,22 +57,6 @@ func formatCommand(cmd []string) string {
 		result += arg
 	}
 	return result
-}
-
-// setEnvVar parses an environment variable in the format "VAR=value" and sets it
-// Splits on the first '=' character
-func setEnvVar(builder *run.EnvBuilder, envVar string) error {
-	idx := strings.Index(envVar, "=")
-	if idx == -1 {
-		return fmt.Errorf("missing '=' in environment variable: %s", envVar)
-	}
-	if idx == 0 {
-		return fmt.Errorf("empty variable name in environment variable: %s", envVar)
-	}
-	varName := envVar[:idx]
-	varValue := envVar[idx+1:]
-	builder.Set(varName, varValue)
-	return nil
 }
 
 // printCompleteConfig prints a complete, ready-to-use TOML config based on discoveries
@@ -461,84 +444,49 @@ func runExamine(cmd *cobra.Command, args []string) error {
 
 	// If command is provided, launch it with proxy environment
 	if len(cliCommand) > 0 {
-		// Build environment with proxy vars
-		envBuilder := run.NewEnvBuilder()
-		envBuilder.InheritParent()
-		envBuilder.Set("HTTP_PROXY", proxyURL)
-		envBuilder.Set("HTTPS_PROXY", proxyURL)
-		envBuilder.Set("NODE_USE_ENV_PROXY", "1")
-
 		// Get CA paths for environment
 		_, _, caCertPath, err := getCAPath()
 		if err != nil {
 			return fmt.Errorf("failed to get CA path: %w", err)
 		}
-		envBuilder.SetCAEnvVars(caCertPath, []string{"SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"})
 
-		// Set user-provided environment variables
+		// Parse user environment variables into map
+		userEnvVars := make(map[string]string)
 		for _, envVar := range envVars {
-			if err := setEnvVar(envBuilder, envVar); err != nil {
-				return fmt.Errorf("invalid environment variable: %w", err)
+			idx := strings.Index(envVar, "=")
+			if idx == -1 {
+				return fmt.Errorf("invalid environment variable (missing '='): %s", envVar)
 			}
+			if idx == 0 {
+				return fmt.Errorf("invalid environment variable (empty name): %s", envVar)
+			}
+			userEnvVars[envVar[:idx]] = envVar[idx+1:]
 		}
 
-		childEnv := envBuilder.Build()
+		// Configure process using unified ProcessConfig
+		processCfg := run.ProcessConfig{
+			Command:     cliCommand,
+			ProxyURL:    proxyURL,
+			CACertPath:  caCertPath,
+			CAEnvVars:   nil, // Use comprehensive defaults (10+ vars)
+			UserEnvVars: userEnvVars,
+		}
 
-		// Create command - DO NOT use ProcessManager to avoid process group isolation
-		// We want the child to receive signals directly from the terminal
-		cmd := exec.Command(cliCommand[0], cliCommand[1:]...)
-		cmd.Env = childEnv
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		// No Setpgid - child stays in same process group for proper signal handling
-
-		log.Info(ctx, "starting child process", "command", cliCommand[0], "args", cliCommand[1:])
-
-		// Start child process
-		if err := cmd.Start(); err != nil {
+		// Spawn child process
+		childProcess, err := run.SpawnChild(ctx, processCfg)
+		if err != nil {
 			shutdownMgr.Shutdown(5 * time.Second)
-			return fmt.Errorf("failed to start child process: %w", err)
+			return err
 		}
-
-		log.Info(ctx, "child process started successfully")
-
-		// Wait for child to exit in a goroutine
-		childExitChan := make(chan int, 1)
-		go func() {
-			err := cmd.Wait()
-			if err != nil {
-				if exitErr, ok := err.(*exec.ExitError); ok {
-					childExitChan <- exitErr.ExitCode()
-				} else {
-					childExitChan <- 1
-				}
-			} else {
-				childExitChan <- 0
-			}
-		}()
 
 		// Wait for child to exit or sentinel to be found
-		var exitCode int
+		exitCode := childProcess.WaitWithSentinel(ctx, sentinelChan)
+
+		// Check if sentinel was triggered (exit code 0 from WaitWithSentinel means sentinel)
+		// We need to check if sentinelChan was closed to know if it was sentinel-triggered
 		select {
 		case <-sentinelChan:
-			// Sentinel found - terminate child and print config
-			log.Info(ctx, "sentinel value detected, terminating child process")
-			if err := cmd.Process.Signal(os.Interrupt); err != nil {
-				_ = cmd.Process.Kill()
-			}
-			// Wait for graceful shutdown (up to 10 seconds), then kill if still running
-			select {
-			case <-time.After(10 * time.Second):
-				_ = cmd.Process.Kill()
-				// Wait for exit
-				exitCode = <-childExitChan
-			case exitCode = <-childExitChan:
-				// Child exited gracefully
-			}
-			exitCode = 0
-
-			// Cleanup and print complete config
+			// Sentinel was triggered - print complete config
 			log.Info(ctx, "stopping proxy server")
 			shutdownMgr.Shutdown(10 * time.Second)
 			if logFile != nil {
@@ -550,11 +498,8 @@ func runExamine(cmd *cobra.Command, args []string) error {
 			printCompleteConfig(ctx, examineLogger)
 			os.Exit(exitCode)
 
-		case exitCode = <-childExitChan:
-			// Child exited normally
-			log.Info(ctx, "child process exited", "exit_code", exitCode)
-
-			// Cleanup
+		default:
+			// Child exited normally (sentinel wasn't triggered)
 			log.Info(ctx, "stopping proxy server")
 			shutdownMgr.Shutdown(10 * time.Second)
 

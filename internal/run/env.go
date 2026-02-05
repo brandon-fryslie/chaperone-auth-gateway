@@ -2,7 +2,6 @@ package run
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -181,33 +180,6 @@ func PrepareRunConfig(cfg *config.Config, serviceName string, cliCommand []strin
 	}
 
 	return &svc, nil
-}
-
-// BuildChildEnvironment creates the environment for the child process.
-// Sets proxy vars, loads env file, and sets CA environment variables.
-func BuildChildEnvironment(ctx context.Context, svc *config.ServiceConfig, serviceName, proxyAddress, caCertPath string) ([]string, error) {
-	envBuilder := NewEnvBuilder()
-	envBuilder.InheritParent()
-
-	// Load env_file if specified
-	if svc.Run.EnvFile != "" {
-		log.Info(ctx, "loading env file", "path", svc.Run.EnvFile)
-		if err := envBuilder.LoadEnvFile(svc.Run.EnvFile); err != nil {
-			return nil, fmt.Errorf("failed to load env file: %w", err)
-		}
-	}
-
-	// Set proxy environment variables
-	envBuilder.SetProxyVars(proxyAddress)
-
-	// Set CA environment variables
-	log.Info(ctx, "setting CA environment variables",
-		"ca_cert", caCertPath,
-		"ca_env_vars", svc.Run.CAEnvVars,
-	)
-	envBuilder.SetCAEnvVars(caCertPath, svc.Run.CAEnvVars)
-
-	return envBuilder.Build(), nil
 }
 
 // CreateTempLogFile creates a temporary log file for run mode logging.
