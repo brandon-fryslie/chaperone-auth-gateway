@@ -41,12 +41,27 @@ type Server struct {
 func (s *Server) createHTTPServer() {
 	s.httpServer = &http.Server{
 		Handler:           s.proxy,
-		ReadTimeout:       30 * time.Second,
-		IdleTimeout:       1 * time.Second,
-		ReadHeaderTimeout: 10 * time.Second,
-		// WriteTimeout is intentionally omitted to support streaming responses
-		// (SSE, GraphQL subscriptions, chunked transfer encoding)
+		ReadHeaderTimeout: 30 * time.Second, // Time to read request headers
+		IdleTimeout:       10 * time.Minute, // Long idle timeout for streaming connections
+		// ReadTimeout: Omitted - streaming requests can be very long
+		// WriteTimeout: Omitted - streaming responses can last minutes
 	}
+}
+
+// configureTransport sets up the outbound transport for streaming-friendly connections.
+func configureTransport(proxy *goproxy.ProxyHttpServer) {
+	// Disable upstream proxy to avoid loops
+	proxy.Tr.Proxy = nil
+
+	// Configure for long-lived streaming connections (Claude API can stream for minutes)
+	proxy.Tr.IdleConnTimeout = 10 * time.Minute      // Long idle timeout for streaming pauses
+	proxy.Tr.ResponseHeaderTimeout = 5 * time.Minute // Long timeout for slow API responses
+	proxy.Tr.ExpectContinueTimeout = 30 * time.Second
+	proxy.Tr.DisableKeepAlives = false // Keep connections alive
+	proxy.Tr.MaxIdleConns = 100        // Allow connection pooling
+	proxy.Tr.MaxIdleConnsPerHost = 10  // Per-host connection pool
+	proxy.Tr.MaxConnsPerHost = 0       // Unlimited concurrent connections per host
+	proxy.Tr.ForceAttemptHTTP2 = true  // Prefer HTTP/2 for upstream connections
 }
 
 // New creates a new proxy server with the given configuration.
@@ -69,8 +84,8 @@ func New(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager)
 	// Redirect goproxy's internal logging to our slog
 	proxy.Logger = &slogAdapter{logger: logger}
 
-	// Disable proxy for upstream connections to avoid proxy loops
-	proxy.Tr.Proxy = nil
+	// Configure transport for streaming
+	configureTransport(proxy)
 
 	s.proxy = proxy
 
@@ -170,8 +185,8 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	// Redirect goproxy's internal logging to our slog
 	proxy.Logger = &slogAdapter{logger: logger}
 
-	// Disable proxy for upstream connections to avoid proxy loops
-	proxy.Tr.Proxy = nil
+	// Configure transport for streaming
+	configureTransport(proxy)
 
 	// Create certificate store adapter
 	certStore := NewGoproxyCertStore(certCache)
@@ -258,8 +273,8 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	// This ensures WARN/ERROR messages go to log file, not stdout
 	proxy.Logger = &slogAdapter{logger: logger}
 
-	// Disable proxy for upstream connections to avoid proxy loops
-	proxy.Tr.Proxy = nil
+	// Configure transport for streaming
+	configureTransport(proxy)
 
 	// Create certificate store adapter
 	certStore := NewGoproxyCertStore(certCache)
