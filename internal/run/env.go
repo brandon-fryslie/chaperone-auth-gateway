@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bmf/chaperone/internal/config"
+	"github.com/bmf/chaperone/internal/defaults"
 	"github.com/bmf/chaperone/internal/log"
 )
 
@@ -101,34 +102,8 @@ func (eb *EnvBuilder) SetProxyVars(proxyAddress string) *EnvBuilder {
 // Always sets CHAPERONE_CA_CERT regardless of caEnvVars.
 func (eb *EnvBuilder) SetCAEnvVars(caCertPath string, caEnvVars []string) *EnvBuilder {
 	if len(caEnvVars) == 0 {
-		// Default: set all standard CA environment variables for comprehensive coverage
-		caEnvVars = []string{
-			// OpenSSL / LibSSL (used by many tools)
-			"SSL_CERT_FILE",
-
-			// cURL / libcurl
-			"CURL_CA_BUNDLE",
-
-			// Node.js
-			"NODE_EXTRA_CA_CERTS",
-
-			// Python (requests, httpx, others)
-			"REQUESTS_CA_BUNDLE",
-			"HTTPX_CA_BUNDLE",
-
-			// Git
-			"GIT_SSL_CAINFO",
-
-			// Perl (LWP, HTTPS)
-			"PERL_LWP_SSL_CA_FILE",
-			"HTTPS_CA_FILE",
-
-			// AWS CLI
-			"AWS_CA_BUNDLE",
-
-			// Homebrew
-			"HOMEBREW_CERTIFICATE_AUTHORITY",
-		}
+		// Default: use comprehensive CA env vars from defaults package
+		caEnvVars = defaults.CAEnvVars
 	}
 
 	for _, envVar := range caEnvVars {

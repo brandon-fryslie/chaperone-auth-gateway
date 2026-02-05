@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/bmf/chaperone/internal/defaults"
 	"github.com/bmf/chaperone/internal/log"
 )
 
@@ -142,19 +143,8 @@ func BuildProcessEnvironment(ctx context.Context, cfg ProcessConfig) ([]string, 
 	// Set CA environment variables (use defaults if not specified)
 	caEnvVars := cfg.CAEnvVars
 	if caEnvVars == nil {
-		// Use comprehensive defaults (SSL_CERT_FILE, REQUESTS_CA_BUNDLE, NODE_EXTRA_CA_CERTS, etc.)
-		caEnvVars = []string{
-			"SSL_CERT_FILE",
-			"REQUESTS_CA_BUNDLE",
-			"NODE_EXTRA_CA_CERTS",
-			"HTTPX_CA_BUNDLE",
-			"PERL_LWP_SSL_CA_FILE",
-			"HTTPS_CA_FILE",
-			"AWS_CA_BUNDLE",
-			"HOMEBREW_CERTIFICATE_AUTHORITY",
-			"GIT_SSL_CAINFO",
-			"CURL_CA_BUNDLE",
-		}
+		// Use comprehensive defaults from defaults package
+		caEnvVars = defaults.CAEnvVars
 	}
 	log.Info(ctx, "setting CA environment variables",
 		"ca_cert", cfg.CACertPath,
