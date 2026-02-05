@@ -61,7 +61,7 @@ func configureTransport(proxy *goproxy.ProxyHttpServer) {
 	proxy.Tr.MaxIdleConns = 100        // Allow connection pooling
 	proxy.Tr.MaxIdleConnsPerHost = 10  // Per-host connection pool
 	proxy.Tr.MaxConnsPerHost = 0       // Unlimited concurrent connections per host
-	proxy.Tr.ForceAttemptHTTP2 = true  // Prefer HTTP/2 for upstream connections
+	proxy.Tr.ForceAttemptHTTP2 = false // Don't force HTTP/2 - causes client compatibility issues
 }
 
 // New creates a new proxy server with the given configuration.
