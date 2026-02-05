@@ -66,6 +66,9 @@ func New(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager)
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Verbose = (cfg.Logging.Level == "debug")
 
+	// Redirect goproxy's internal logging to our slog
+	proxy.Logger = &slogAdapter{logger: logger}
+
 	// Disable proxy for upstream connections to avoid proxy loops
 	proxy.Tr.Proxy = nil
 
@@ -164,6 +167,9 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	proxy := goproxy.NewProxyHttpServer()
 	proxy.Verbose = (cfg.Logging.Level == "debug")
 
+	// Redirect goproxy's internal logging to our slog
+	proxy.Logger = &slogAdapter{logger: logger}
+
 	// Disable proxy for upstream connections to avoid proxy loops
 	proxy.Tr.Proxy = nil
 
@@ -247,6 +253,10 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	// NEVER enable proxy.Verbose in examine mode - it writes to stdout and breaks
 	// full-screen terminal applications. Use structured logging instead.
 	proxy.Verbose = false
+
+	// Redirect goproxy's internal logging to our slog
+	// This ensures WARN/ERROR messages go to log file, not stdout
+	proxy.Logger = &slogAdapter{logger: logger}
 
 	// Disable proxy for upstream connections to avoid proxy loops
 	proxy.Tr.Proxy = nil
