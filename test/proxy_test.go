@@ -35,10 +35,10 @@ import (
 //
 // ANTI-GAMING MEASURES:
 // 1. Tests start REAL proxy server on actual TCP port (observable network behavior)
-// 2. Tests make REAL TCP connections to proxy (actual socket operations)
+// 2. Tests make REAL TCP connections to proxy
 // 3. Tests verify ACTUAL data flows through tunnel (bytes sent/received match)
 // 4. Tests use REAL HTTPS servers with TLS (not mocks)
-// 5. Tests verify connection cleanup happens (goroutines exit, sockets close)
+// 5. Tests verify connection cleanup happens (goroutines exit)
 // 6. Tests measure REAL wall-clock time for timeout enforcement
 // 7. Tests verify multiple concurrent tunnels work simultaneously (real parallelism)
 // 8. Tests FAIL when proxy behavior is incorrect or missing
@@ -52,7 +52,7 @@ import (
 // 2. Verifies port is bound and listening (connection succeeds)
 // 3. Verifies server stops cleanly (port released)
 // 4. Verifies server can be restarted on same port
-// 5. Tests actual network socket operations
+// 5. Tests actual network operations
 func TestProxyServerLifecycle(t *testing.T) {
 	t.Run("server_starts_on_configured_port", func(t *testing.T) {
 		t.Parallel()
@@ -284,7 +284,7 @@ func testServerGracefulShutdownWithActiveConnections(t *testing.T) {
 // 3. Sends actual data through tunnel
 // 4. Verifies data arrives at upstream server
 // 5. Verifies bidirectional flow (both directions work)
-// 6. Tests actual socket operations, not mocks
+// 6. Tests actual network operations, not mocks
 func TestProxyCONNECTTunnel(t *testing.T) {
 	t.Run("connect_request_establishes_tunnel", func(t *testing.T) {
 		t.Parallel()
@@ -692,7 +692,7 @@ func testTunnelCleanupOnUpstreamDisconnect(t *testing.T) {
 // 1. Starts multiple real HTTP clients in parallel
 // 2. Each makes actual HTTPS request through proxy
 // 3. Verifies all requests succeed
-// 4. Tests actual concurrent socket operations
+// 4. Tests actual concurrent operations
 // 5. Race detector catches any concurrency bugs
 func TestProxyConcurrentTunnels(t *testing.T) {
 	t.Run("concurrent_tunnels_to_same_upstream", func(t *testing.T) {

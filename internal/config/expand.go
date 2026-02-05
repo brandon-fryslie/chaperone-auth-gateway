@@ -101,13 +101,6 @@ func ExpandRunConfig(rc *RunConfig) error {
 		}
 	}
 
-	// Expand socket_path
-	if rc.SocketPath != "" {
-		if rc.SocketPath, err = expandVars(rc.SocketPath); err != nil {
-			return fmt.Errorf("socket_path: %w", err)
-		}
-	}
-
 	// Expand stdout
 	if rc.Stdout != "" {
 		if rc.Stdout, err = expandVars(rc.Stdout); err != nil {

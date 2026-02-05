@@ -65,35 +65,6 @@ func TestEnvBuilder_Set(t *testing.T) {
 	}
 }
 
-func TestEnvBuilder_SetProxyVars(t *testing.T) {
-	eb := NewEnvBuilder()
-	eb.SetProxyVars("/tmp/test.sock", "myservice")
-
-	env := eb.Build()
-
-	vars := make(map[string]string)
-	for _, e := range env {
-		parts := strings.SplitN(e, "=", 2)
-		if len(parts) == 2 {
-			vars[parts[0]] = parts[1]
-		}
-	}
-
-	expectedVars := map[string]string{
-		"HTTP_PROXY":        "http+unix:///tmp/test.sock",
-		"HTTPS_PROXY":       "http+unix:///tmp/test.sock",
-		"CHAPERONE_SOCKET":  "/tmp/test.sock",
-		"CHAPERONE_SERVICE": "myservice",
-	}
-
-	for key, want := range expectedVars {
-		got := vars[key]
-		if got != want {
-			t.Errorf("%s=%q, want %q", key, got, want)
-		}
-	}
-}
-
 func TestEnvBuilder_SetCAEnvVars(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -371,37 +342,6 @@ func TestEnvBuilder_Chaining_WithCAEnvVars(t *testing.T) {
 		if vars[varName] != "/tmp/ca-cert.pem" {
 			t.Errorf("%s=%q, want /tmp/ca-cert.pem", varName, vars[varName])
 		}
-	}
-}
-
-func TestGenerateSocketPath(t *testing.T) {
-	tests := []struct {
-		name        string
-		serviceName string
-		pid         int
-		want        string
-	}{
-		{
-			name:        "simple service name",
-			serviceName: "openai",
-			pid:         12345,
-			want:        "/tmp/chaperone-openai-12345.sock",
-		},
-		{
-			name:        "service with dash",
-			serviceName: "my-service",
-			pid:         999,
-			want:        "/tmp/chaperone-my-service-999.sock",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := GenerateSocketPath(tt.serviceName, tt.pid)
-			if got != tt.want {
-				t.Errorf("GenerateSocketPath() = %q, want %q", got, tt.want)
-			}
-		})
 	}
 }
 

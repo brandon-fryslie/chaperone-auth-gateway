@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 
 	"github.com/BurntSushi/toml"
@@ -17,22 +16,21 @@ type Config struct {
 }
 
 // ServerConfig contains HTTP server settings.
+// Address is always 127.0.0.1 and Port is always 0 (OS-allocated).
 type ServerConfig struct {
 	Address string `toml:"address"`
 	Port    int    `toml:"port"`
-	Socket  string `toml:"socket"` // Unix socket path (mutually exclusive with Address/Port)
 }
 
 // RunConfig defines settings for spawning and managing child processes in run mode.
 type RunConfig struct {
-	Command    string   `toml:"command"`     // Command to execute (searches PATH)
-	Args       []string `toml:"args"`        // Command arguments
-	EnvFile    string   `toml:"env_file"`    // Path to .env file (KEY=value format)
-	SocketPath string   `toml:"socket_path"` // Override default socket path
-	Stdin      string   `toml:"stdin"`       // "inherit", "file:/path", or "discard"
-	Stdout     string   `toml:"stdout"`      // "inherit", "file:/path", or "discard"
-	Stderr     string   `toml:"stderr"`      // "inherit", "file:/path", or "discard"
-	CAEnvVars  []string `toml:"ca_env_vars"` // CA cert environment variables to set (defaults to all standard vars)
+	Command   string   `toml:"command"`     // Command to execute (searches PATH)
+	Args      []string `toml:"args"`        // Command arguments
+	EnvFile   string   `toml:"env_file"`    // Path to .env file (KEY=value format)
+	Stdin     string   `toml:"stdin"`       // "inherit", "file:/path", or "discard"
+	Stdout    string   `toml:"stdout"`      // "inherit", "file:/path", or "discard"
+	Stderr    string   `toml:"stderr"`      // "inherit", "file:/path", or "discard"
+	CAEnvVars []string `toml:"ca_env_vars"` // CA cert environment variables to set (defaults to all standard vars)
 }
 
 // ServiceConfig defines settings for a managed API service.
@@ -81,20 +79,14 @@ func Load(path string) (*Config, error) {
 
 // Validate checks that the configuration is valid.
 func (c *Config) Validate() error {
-	// Validate socket vs port configuration
-	if c.Server.Socket != "" && c.Server.Port != 0 {
-		// Both socket and port specified - socket takes precedence, log warning
-		slog.Warn("both socket and port configured, socket takes precedence",
-			"socket", c.Server.Socket,
-			"port", c.Server.Port,
-		)
+	// Address must always be 127.0.0.1
+	if c.Server.Address != "127.0.0.1" {
+		return fmt.Errorf("invalid address %q: must be 127.0.0.1", c.Server.Address)
 	}
 
-	// Validate port range (1-65535) only if socket is not configured
-	if c.Server.Socket == "" {
-		if c.Server.Port < 1 || c.Server.Port > 65535 {
-			return fmt.Errorf("invalid port %d: must be between 1 and 65535", c.Server.Port)
-		}
+	// Port must always be 0 (OS-allocated)
+	if c.Server.Port != 0 {
+		return fmt.Errorf("invalid port %d: must be 0 (OS-allocated)", c.Server.Port)
 	}
 
 	// Validate log level (lowercase only)
@@ -135,20 +127,9 @@ func (c *Config) Validate() error {
 
 // SetDefaults applies default values to missing fields.
 func (c *Config) SetDefaults() {
-	// Server defaults
-	// Default to Unix socket mode if neither socket nor port is configured
-	if c.Server.Socket == "" && c.Server.Port == 0 {
-		// Default: Unix socket mode for better security
-		// Include PID to allow multiple instances to run simultaneously
-		c.Server.Socket = fmt.Sprintf("/tmp/chaperone-%d.sock", os.Getpid())
-	}
-
-	// If port is explicitly set but socket is not, use TCP mode
-	if c.Server.Port != 0 && c.Server.Socket == "" {
-		if c.Server.Address == "" {
-			c.Server.Address = "127.0.0.1"
-		}
-	}
+	// Server defaults - always use 127.0.0.1:0 (OS-allocated port)
+	c.Server.Address = "127.0.0.1"
+	c.Server.Port = 0
 
 	// Logging defaults
 	if c.Logging.Level == "" {

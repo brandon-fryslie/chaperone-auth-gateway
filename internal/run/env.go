@@ -85,12 +85,10 @@ func (eb *EnvBuilder) Set(key, value string) *EnvBuilder {
 }
 
 // SetProxyVars sets the proxy-related environment variables.
-// Adds: HTTP_PROXY, HTTPS_PROXY, CHAPERONE_SOCKET, CHAPERONE_SERVICE
-func (eb *EnvBuilder) SetProxyVars(socketPath, serviceName string) *EnvBuilder {
-	proxyURL := fmt.Sprintf("http+unix://%s", socketPath)
-	eb.env["HTTP_PROXY"] = proxyURL
-	eb.env["HTTPS_PROXY"] = proxyURL
-	eb.env["CHAPERONE_SOCKET"] = socketPath
+// Adds: HTTP_PROXY, HTTPS_PROXY, CHAPERONE_SERVICE
+func (eb *EnvBuilder) SetProxyVars(proxyAddress string, serviceName string) *EnvBuilder {
+	eb.env["HTTP_PROXY"] = proxyAddress
+	eb.env["HTTPS_PROXY"] = proxyAddress
 	eb.env["CHAPERONE_SERVICE"] = serviceName
 	return eb
 }
@@ -126,10 +124,4 @@ func (eb *EnvBuilder) Build() []string {
 		result = append(result, fmt.Sprintf("%s=%s", k, v))
 	}
 	return result
-}
-
-// GenerateSocketPath generates a socket path for a service.
-// Format: /tmp/chaperone-<service>-<pid>.sock
-func GenerateSocketPath(serviceName string, pid int) string {
-	return fmt.Sprintf("/tmp/chaperone-%s-%d.sock", serviceName, pid)
 }

@@ -98,14 +98,8 @@ func runCheck(cmd *cobra.Command, args []string) error {
 			"Run as dedicated 'chaperone' user for credential file isolation")
 	}
 
-	// Check if using Unix socket mode
-	if cfg != nil && cfg.Server.Socket != "" {
-		fmt.Printf("  %s Unix socket: Using socket at %s\n", iconOK, cfg.Server.Socket)
-	} else {
-		fmt.Printf("  %sUsing TCP port (consider Unix socket for better isolation)\n", iconWarn)
-		recommendations = append(recommendations,
-			"Use Unix socket mode for better permission isolation: --socket /path/to/socket")
-	}
+	// Always use localhost with OS-allocated port
+	fmt.Printf("  %s Listening on 127.0.0.1 with OS-allocated port\n", iconOK)
 	fmt.Println()
 
 	// Layer 4: Network Hardening

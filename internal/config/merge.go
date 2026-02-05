@@ -84,9 +84,6 @@ func mergeConfigs(base, project *Config) *Config {
 	if project.Server.Port != 0 {
 		result.Server.Port = project.Server.Port
 	}
-	if project.Server.Socket != "" {
-		result.Server.Socket = project.Server.Socket
-	}
 
 	// Merge logging config (field-level)
 	if project.Logging.Level != "" {

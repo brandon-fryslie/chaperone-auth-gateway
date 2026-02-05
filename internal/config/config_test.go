@@ -9,7 +9,7 @@ import (
 func TestValidate_PlaceholderLength(t *testing.T) {
 	t.Run("empty placeholder allowed", func(t *testing.T) {
 		cfg := &Config{
-			Server:  ServerConfig{Port: 8080},
+			Server:  ServerConfig{Address: "127.0.0.1", Port: 0},
 			Logging: LoggingConfig{Level: "info"},
 			Services: map[string]ServiceConfig{
 				"test": {HostPattern: "example.com", Placeholder: ""},
@@ -21,7 +21,7 @@ func TestValidate_PlaceholderLength(t *testing.T) {
 
 	t.Run("short placeholder rejected", func(t *testing.T) {
 		cfg := &Config{
-			Server:  ServerConfig{Port: 8080},
+			Server:  ServerConfig{Address: "127.0.0.1", Port: 0},
 			Logging: LoggingConfig{Level: "info"},
 			Services: map[string]ServiceConfig{
 				"test": {HostPattern: "example.com", Placeholder: "short"},
@@ -34,7 +34,7 @@ func TestValidate_PlaceholderLength(t *testing.T) {
 
 	t.Run("7 character placeholder rejected", func(t *testing.T) {
 		cfg := &Config{
-			Server:  ServerConfig{Port: 8080},
+			Server:  ServerConfig{Address: "127.0.0.1", Port: 0},
 			Logging: LoggingConfig{Level: "info"},
 			Services: map[string]ServiceConfig{
 				"test": {HostPattern: "example.com", Placeholder: "1234567"},
@@ -48,7 +48,7 @@ func TestValidate_PlaceholderLength(t *testing.T) {
 
 	t.Run("8 character placeholder accepted", func(t *testing.T) {
 		cfg := &Config{
-			Server:  ServerConfig{Port: 8080},
+			Server:  ServerConfig{Address: "127.0.0.1", Port: 0},
 			Logging: LoggingConfig{Level: "info"},
 			Services: map[string]ServiceConfig{
 				"test": {HostPattern: "example.com", Placeholder: "12345678"},
@@ -60,7 +60,7 @@ func TestValidate_PlaceholderLength(t *testing.T) {
 
 	t.Run("valid placeholder accepted", func(t *testing.T) {
 		cfg := &Config{
-			Server:  ServerConfig{Port: 8080},
+			Server:  ServerConfig{Address: "127.0.0.1", Port: 0},
 			Logging: LoggingConfig{Level: "info"},
 			Services: map[string]ServiceConfig{
 				"test": {HostPattern: "example.com", Placeholder: "chap_test_12345678"},

@@ -19,7 +19,6 @@ import (
 	"github.com/bmf/chaperone/internal/recorder"
 	"github.com/bmf/chaperone/internal/run"
 	"github.com/bmf/chaperone/internal/shutdown"
-	"github.com/bmf/chaperone/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -35,23 +34,18 @@ const (
 
 var (
 	// Examine flags
-	showBody       bool
-	showParams     bool
-	showCookies    bool
-	showResponse   bool
-	outputFile     string
-	enableHAR      bool
-	harOutputFile  string
-	enableJSONL    bool
+	showBody        bool
+	showParams      bool
+	showCookies     bool
+	showResponse    bool
+	outputFile      string
+	enableHAR       bool
+	harOutputFile   string
+	enableJSONL     bool
 	jsonlOutputFile string
-	allHeaders     bool
-	sentinelValue  string
-	envVars        []string // Can be passed multiple times with -e/--env
-	// Transport flags (like inject command)
-	examineSocketPath string
-	examineHTTPMode   bool
-	examineHTTPPort   int
-	examineHTTPAddr   string
+	allHeaders      bool
+	sentinelValue   string
+	envVars         []string // Can be passed multiple times with -e/--env
 )
 
 // formatCommand formats a command slice as a space-separated string
@@ -207,12 +201,6 @@ func init() {
 	examineCmd.Flags().BoolVar(&allHeaders, "all-headers", false, "Show all headers (disable filtering heuristics)")
 	examineCmd.Flags().StringVar(&sentinelValue, "sentinel", "chaperone-sentinel", "Sentinel value to look for in auth headers to confirm correct header")
 	examineCmd.Flags().StringSliceVarP(&envVars, "env", "e", []string{}, "Set environment variable for command (format: VAR=value, can be used multiple times)")
-
-	// Transport mode flags (matching inject command)
-	examineCmd.Flags().StringVar(&examineSocketPath, "socket", "", "Unix socket path (default: auto-generated)")
-	examineCmd.Flags().BoolVar(&examineHTTPMode, "http", false, "Use HTTP/TCP mode instead of Unix socket")
-	examineCmd.Flags().IntVar(&examineHTTPPort, "port", 0, "Port to listen on (implies --http, default 4010)")
-	examineCmd.Flags().StringVar(&examineHTTPAddr, "addr", "", "Address to listen on (implies --http, default 127.0.0.1)")
 }
 
 func runExamine(cmd *cobra.Command, args []string) error {
@@ -246,11 +234,10 @@ func runExamine(cmd *cobra.Command, args []string) error {
 
 	// Minimal config - just need server address/port
 	// Examine mode doesn't need services configured
-	// Default to TCP mode for examine (not Unix socket)
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Address: "127.0.0.1",
-			Port:    4010,
+			Port:    0,
 		},
 		Logging: config.LoggingConfig{
 			Level: "info",
@@ -276,14 +263,6 @@ func runExamine(cmd *cobra.Command, args []string) error {
 			// Note: Ignore Socket setting - examine mode uses TCP
 		}
 	}
-
-	// Apply CLI flags for transport mode
-	orchestrate.ApplyTransportFlags(cfg, orchestrate.TransportFlags{
-		SocketPath: examineSocketPath,
-		HTTPMode:   examineHTTPMode,
-		HTTPPort:   examineHTTPPort,
-		HTTPAddr:   examineHTTPAddr,
-	})
 
 	cfg.SetDefaults()
 
@@ -402,16 +381,10 @@ func runExamine(cmd *cobra.Command, args []string) error {
 	})
 
 	// Log startup info
-	if cfg.Server.Socket != "" {
-		log.Info(ctx, "chaperone examine mode starting",
-			"socket", cfg.Server.Socket,
-		)
-	} else {
-		log.Info(ctx, "chaperone examine mode starting",
-			"address", cfg.Server.Address,
-			"port", cfg.Server.Port,
-		)
-	}
+	log.Info(ctx, "chaperone examine mode starting",
+		"address", cfg.Server.Address,
+		"port", cfg.Server.Port,
+	)
 
 	// Print startup info based on execution mode
 	if len(cliCommand) > 0 {
@@ -442,18 +415,8 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "\n\n")
 	} else {
-		// Manual mode: print proxy configuration
-		var proxyURLString string
-		if cfg.Server.Socket != "" {
-			proxyURLString = util.GetProxyURLString(cfg.Server.Socket, 0)
-		} else {
-			proxyURLString = util.GetProxyURLString(cfg.Server.Address, cfg.Server.Port)
-		}
-		fmt.Printf("\nConfigure your application to use: %s as proxy\n", proxyURLString)
-		fmt.Printf("Example:\n")
-		fmt.Printf("  export HTTP_PROXY=%s\n", proxyURLString)
-		fmt.Printf("  export HTTPS_PROXY=%s\n\n", proxyURLString)
-		fmt.Printf("Press Ctrl+C to stop.\n\n")
+		// Manual mode: print proxy configuration placeholder (will update after server starts)
+		fmt.Printf("\nStarting proxy server...\n")
 
 		if enableHAR {
 			fmt.Printf("HAR Recording: ENABLED\n")
@@ -473,26 +436,27 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start examine proxy: %w", err)
 	}
 
+	// Get the actual listening address (OS-allocated port)
+	actualAddr := server.Addr()
+	proxyURL := fmt.Sprintf("http://%s", actualAddr)
+
+	// Update manual mode output with actual address
+	if len(cliCommand) == 0 {
+		fmt.Printf("\nProxy listening on: %s\n", proxyURL)
+		fmt.Printf("Configure your application to use this as proxy\n")
+		fmt.Printf("Example:\n")
+		fmt.Printf("  export HTTP_PROXY=%s\n", proxyURL)
+		fmt.Printf("  export HTTPS_PROXY=%s\n\n", proxyURL)
+	}
+
 	// If command is provided, launch it with proxy environment
 	if len(cliCommand) > 0 {
-		// Build proxy URL
-		var proxyURL string
-		if cfg.Server.Socket != "" {
-			proxyURL = util.GetProxyURLString(cfg.Server.Socket, 0)
-		} else {
-			proxyURL = util.GetProxyURLString(cfg.Server.Address, cfg.Server.Port)
-		}
-
 		// Build environment with proxy vars
 		envBuilder := run.NewEnvBuilder()
 		envBuilder.InheritParent()
-		// Set proxy environment vars manually (SetProxyVars only works with Unix sockets)
 		envBuilder.Set("HTTP_PROXY", proxyURL)
 		envBuilder.Set("HTTPS_PROXY", proxyURL)
 		envBuilder.Set("CHAPERONE_SERVICE", "examine")
-		if cfg.Server.Socket != "" {
-			envBuilder.Set("CHAPERONE_SOCKET", cfg.Server.Socket)
-		}
 
 		// Get CA paths for environment
 		_, _, caCertPath, err := getCAPath()

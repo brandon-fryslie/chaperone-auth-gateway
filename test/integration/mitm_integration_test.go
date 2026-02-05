@@ -38,7 +38,7 @@ import (
 //
 // ANTI-GAMING MEASURES:
 // 1. Tests use REAL HTTP clients (net/http)
-// 2. Tests make ACTUAL network requests (TCP sockets)
+// 2. Tests make ACTUAL network requests
 // 3. Tests verify REAL TLS handshakes (crypto/tls)
 // 4. Tests verify ACTUAL certificate chains (x509 verification)
 // 5. Tests use REAL proxy server (not mocks)

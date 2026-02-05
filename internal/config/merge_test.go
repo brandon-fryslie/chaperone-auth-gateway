@@ -33,20 +33,17 @@ func TestMergeConfigs(t *testing.T) {
 				Server: ServerConfig{
 					Address: "127.0.0.1",
 					Port:    4010,
-					Socket:  "",
 				},
 			},
 			proj: &Config{
 				Server: ServerConfig{
-					Port:   8080,
-					Socket: "/tmp/chaperone.sock",
+					Port: 8080,
 				},
 			},
 			want: &Config{
 				Server: ServerConfig{
 					Address: "127.0.0.1", // Not overridden
 					Port:    8080,        // Overridden
-					Socket:  "/tmp/chaperone.sock",
 				},
 			},
 		},

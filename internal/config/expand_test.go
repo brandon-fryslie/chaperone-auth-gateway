@@ -122,12 +122,10 @@ func TestExpandRunConfig(t *testing.T) {
 	os.Setenv("TEST_CMD", "echo")
 	os.Setenv("TEST_ARG", "hello")
 	os.Setenv("TEST_PATH", "/tmp/test.env")
-	os.Setenv("TEST_SOCKET", "/tmp/test.sock")
 	defer func() {
 		os.Unsetenv("TEST_CMD")
 		os.Unsetenv("TEST_ARG")
 		os.Unsetenv("TEST_PATH")
-		os.Unsetenv("TEST_SOCKET")
 	}()
 
 	tests := []struct {
@@ -144,20 +142,18 @@ func TestExpandRunConfig(t *testing.T) {
 		{
 			name: "expand all fields",
 			input: &RunConfig{
-				Command:    "$TEST_CMD",
-				Args:       []string{"$TEST_ARG", "world"},
-				EnvFile:    "$TEST_PATH",
-				SocketPath: "$TEST_SOCKET",
-				Stdout:     "file:$TEST_PATH",
-				Stderr:     "inherit",
+				Command: "$TEST_CMD",
+				Args:    []string{"$TEST_ARG", "world"},
+				EnvFile: "$TEST_PATH",
+				Stdout:  "file:$TEST_PATH",
+				Stderr:  "inherit",
 			},
 			want: &RunConfig{
-				Command:    "echo",
-				Args:       []string{"hello", "world"},
-				EnvFile:    "/tmp/test.env",
-				SocketPath: "/tmp/test.sock",
-				Stdout:     "file:/tmp/test.env",
-				Stderr:     "inherit",
+				Command: "echo",
+				Args:    []string{"hello", "world"},
+				EnvFile: "/tmp/test.env",
+				Stdout:  "file:/tmp/test.env",
+				Stderr:  "inherit",
 			},
 		},
 		{
@@ -224,9 +220,6 @@ func TestExpandRunConfig(t *testing.T) {
 			}
 			if input.EnvFile != tt.want.EnvFile {
 				t.Errorf("EnvFile = %q, want %q", input.EnvFile, tt.want.EnvFile)
-			}
-			if input.SocketPath != tt.want.SocketPath {
-				t.Errorf("SocketPath = %q, want %q", input.SocketPath, tt.want.SocketPath)
 			}
 			if input.Stdout != tt.want.Stdout {
 				t.Errorf("Stdout = %q, want %q", input.Stdout, tt.want.Stdout)

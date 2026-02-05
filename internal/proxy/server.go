@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/examine"
-	chaperoneInit "github.com/bmf/chaperone/internal/init"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/recorder"
 	"github.com/bmf/chaperone/internal/secrets"
@@ -262,51 +260,6 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	return s
 }
 
-// NewInitProxy creates a passthrough MITM proxy for init mode credential discovery.
-// It analyzes requests to detect authentication patterns and generate config.
-func NewInitProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, detector *chaperoneInit.Detector, evidence *chaperoneInit.Evidence, onFinding chaperoneInit.FindingCallback) *Server {
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	s := &Server{
-		config:      cfg,
-		logger:      logger,
-		shutdownMgr: shutdownMgr,
-	}
-
-	// Create goproxy server
-	proxy := goproxy.NewProxyHttpServer()
-	proxy.Verbose = (cfg.Logging.Level == "debug")
-
-	// Disable proxy for upstream connections to avoid proxy loops
-	proxy.Tr.Proxy = nil
-
-	// Create certificate store adapter
-	certStore := NewGoproxyCertStore(certCache)
-
-	// Configure CONNECT handler - MITM ALL connections (no filtering)
-	proxy.OnRequest().HandleConnectFunc(chaperoneInit.ConnectHandler(certStore, logger))
-
-	// Configure request handler - analyze ALL requests
-	proxy.OnRequest().DoFunc(chaperoneInit.RequestHandler(detector, evidence, onFinding))
-
-	// Configure response handler - no-op for now
-	proxy.OnResponse().DoFunc(chaperoneInit.ResponseHandler())
-
-	s.proxy = proxy
-
-	// Create HTTP server with the proxy
-	s.createHTTPServer()
-
-	// Register shutdown function
-	if shutdownMgr != nil {
-		shutdownMgr.Register(s.Stop)
-	}
-
-	return s
-}
-
 // Start starts the proxy server.
 func (s *Server) Start() error {
 	s.mu.Lock()
@@ -319,52 +272,14 @@ func (s *Server) Start() error {
 	var listener net.Listener
 	var err error
 
-	// Check if Unix socket mode is configured
-	if s.config.Server.Socket != "" {
-		// Unix socket mode
-		socketPath := s.config.Server.Socket
-
-		// Remove stale socket file if it exists
-		if _, statErr := os.Stat(socketPath); statErr == nil {
-			if removeErr := os.Remove(socketPath); removeErr != nil {
-				return fmt.Errorf("failed to remove stale socket %s: %w", socketPath, removeErr)
-			}
-			s.logger.Debug("removed stale socket file", "path", socketPath)
-		}
-
-		// Create Unix socket listener
-		listener, err = net.Listen("unix", socketPath)
-		if err != nil {
-			return fmt.Errorf("failed to listen on socket %s: %w", socketPath, err)
-		}
-
-		// Set socket file permissions to 0660 (owner/group read-write)
-		if chmodErr := os.Chmod(socketPath, 0660); chmodErr != nil {
-			listener.Close()
-			return fmt.Errorf("failed to set socket permissions: %w", chmodErr)
-		}
-
-		// Register cleanup to remove socket file on shutdown
-		if s.shutdownMgr != nil {
-			s.shutdownMgr.Register(func(ctx context.Context) error {
-				if removeErr := os.Remove(socketPath); removeErr != nil && !os.IsNotExist(removeErr) {
-					s.logger.Warn("failed to remove socket file on shutdown", "error", removeErr, "path", socketPath)
-				}
-				return nil
-			})
-		}
-
-		s.logger.Info("proxy server started", "socket", socketPath)
-	} else {
-		// TCP mode (existing behavior)
-		addr := fmt.Sprintf("%s:%d", s.config.Server.Address, s.config.Server.Port)
-		listener, err = net.Listen("tcp", addr)
-		if err != nil {
-			return fmt.Errorf("failed to start listener: %w", err)
-		}
-
-		s.logger.Info("proxy server started", "address", addr)
+	// Always use TCP mode on 127.0.0.1 with OS-allocated port
+	addr := fmt.Sprintf("%s:%d", s.config.Server.Address, s.config.Server.Port)
+	listener, err = net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to start listener: %w", err)
 	}
+
+	s.logger.Info("proxy server started", "address", addr)
 
 	s.listener = listener
 	s.started = true
@@ -396,6 +311,18 @@ func (s *Server) Stop(ctx context.Context) error {
 
 	s.started = false
 	return nil
+}
+
+// Addr returns the listening address of the proxy server.
+// Returns empty string if server is not started.
+func (s *Server) Addr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.listener != nil {
+		return s.listener.Addr().String()
+	}
+	return ""
 }
 
 // GetRecorder returns the HAR recorder (for testing/debugging).

@@ -46,7 +46,7 @@ func PrepareRunConfig(cfg *config.Config, serviceName string, cliCommand []strin
 
 // BuildChildEnvironment creates the environment for the child process.
 // Sets proxy vars, loads env file, and sets CA environment variables.
-func BuildChildEnvironment(ctx context.Context, svc *config.ServiceConfig, serviceName, socketPath, caCertPath string) ([]string, error) {
+func BuildChildEnvironment(ctx context.Context, svc *config.ServiceConfig, serviceName, proxyAddress, caCertPath string) ([]string, error) {
 	envBuilder := NewEnvBuilder()
 	envBuilder.InheritParent()
 
@@ -59,7 +59,7 @@ func BuildChildEnvironment(ctx context.Context, svc *config.ServiceConfig, servi
 	}
 
 	// Set proxy environment variables
-	envBuilder.SetProxyVars(socketPath, serviceName)
+	envBuilder.SetProxyVars(proxyAddress, serviceName)
 
 	// Set CA environment variables
 	log.Info(ctx, "setting CA environment variables",

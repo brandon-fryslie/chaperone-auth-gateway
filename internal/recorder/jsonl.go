@@ -14,29 +14,29 @@ import (
 // JSONLRecorder records HTTP traffic in JSON Lines format.
 // Each line is a complete JSON object representing a request or response.
 type JSONLRecorder struct {
-	mu      sync.Mutex
-	writer  io.Writer
-	file    *os.File // If writing to file, for cleanup
-	engine  *capture.Engine
+	mu     sync.Mutex
+	writer io.Writer
+	file   *os.File // If writing to file, for cleanup
+	engine *capture.Engine
 }
 
 // JSONLEntry represents a single JSONL entry (request or response).
 type JSONLEntry struct {
-	Timestamp   string                 `json:"ts"`
-	RequestID   string                 `json:"req_id,omitempty"`
-	Type        string                 `json:"type"` // "request" or "response"
-	Method      string                 `json:"method,omitempty"`
-	URL         string                 `json:"url,omitempty"`
-	Host        string                 `json:"host,omitempty"`
-	Path        string                 `json:"path,omitempty"`
-	Status      int                    `json:"status,omitempty"`
-	StatusText  string                 `json:"status_text,omitempty"`
-	Headers     map[string]string      `json:"headers,omitempty"`
-	Body        interface{}            `json:"body,omitempty"`
-	BodyType    string                 `json:"body_type,omitempty"`
-	BodyInfo    string                 `json:"body_info,omitempty"`
-	BodyError   string                 `json:"body_error,omitempty"`
-	DurationMS  int64                  `json:"duration_ms,omitempty"`
+	Timestamp  string            `json:"ts"`
+	RequestID  string            `json:"req_id,omitempty"`
+	Type       string            `json:"type"` // "request" or "response"
+	Method     string            `json:"method,omitempty"`
+	URL        string            `json:"url,omitempty"`
+	Host       string            `json:"host,omitempty"`
+	Path       string            `json:"path,omitempty"`
+	Status     int               `json:"status,omitempty"`
+	StatusText string            `json:"status_text,omitempty"`
+	Headers    map[string]string `json:"headers,omitempty"`
+	Body       interface{}       `json:"body,omitempty"`
+	BodyType   string            `json:"body_type,omitempty"`
+	BodyInfo   string            `json:"body_info,omitempty"`
+	BodyError  string            `json:"body_error,omitempty"`
+	DurationMS int64             `json:"duration_ms,omitempty"`
 }
 
 // NewJSONLRecorder creates a new JSONL recorder writing to the given writer.

@@ -9,9 +9,9 @@ import (
 
 // MultiRecorder records HTTP traffic to multiple formats simultaneously.
 type MultiRecorder struct {
-	harRecorder  *Recorder
+	harRecorder   *Recorder
 	jsonlRecorder *JSONLRecorder
-	engine       *capture.Engine
+	engine        *capture.Engine
 }
 
 // NewMultiRecorder creates a recorder that can write to HAR, JSONL, or both.
@@ -27,7 +27,7 @@ func NewMultiRecorder(harRecorder *Recorder, jsonlRecorder *JSONLRecorder) *Mult
 // This method uses the unified capture engine and writes to all enabled formats.
 func (m *MultiRecorder) RecordRequest(req *http.Request, started time.Time) func(resp *http.Response, err error, end time.Time) {
 	// Capture request using unified engine
-	capturedReq, capErr := m.engine.CaptureRequest(req, started)
+	capturedReq, _ := m.engine.CaptureRequest(req, started)
 
 	// Get request ID from context (if available)
 	requestID := getRequestIDFromContext(req.Context())

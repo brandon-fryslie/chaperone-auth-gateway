@@ -22,7 +22,7 @@ var runCmd = &cobra.Command{
 	Long: `Spawn and manage an application process with automatic proxy configuration.
 
 This command:
-1. Starts a proxy server on a Unix socket
+1. Starts a proxy server on 127.0.0.1 with OS-allocated port
 2. Spawns the configured application with proxy environment variables
 3. Manages the lifecycle of both proxy and application
 4. Forwards signals (SIGTERM) to the application
@@ -80,16 +80,6 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Generate socket path (use proxy PID, so we use our own PID)
-	socketPath := svc.Run.SocketPath
-	if socketPath == "" {
-		socketPath = run.GenerateSocketPath(serviceName, os.Getpid())
-	}
-
-	// Override server socket configuration
-	cfg.Server.Socket = socketPath
-	cfg.Server.Port = 0 // Disable TCP mode
-
 	// Apply defaults and validate
 	cfg.SetDefaults()
 	if err := cfg.Validate(); err != nil {
@@ -108,7 +98,7 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	log.Info(ctx, "chaperone run mode starting",
 		"version", version,
 		"service", serviceName,
-		"socket", socketPath,
+		"address", cfg.Server.Address,
 		"command", svc.Run.Command,
 	)
 
@@ -143,15 +133,19 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	// Create and start proxy server
 	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result)
 
-	log.Info(ctx, "starting proxy server", "socket", socketPath)
+	log.Info(ctx, "starting proxy server", "address", cfg.Server.Address)
 	if err := proxyServer.Start(); err != nil {
 		return fmt.Errorf("failed to start proxy server: %w", err)
 	}
 
 	log.Info(ctx, "proxy server started successfully")
 
+	// Get the actual port assigned by the OS
+	actualAddr := proxyServer.Addr()
+	proxyAddress := fmt.Sprintf("http://%s", actualAddr)
+
 	// Build environment for child process
-	childEnv, err := run.BuildChildEnvironment(ctx, svc, serviceName, socketPath, caCertPath)
+	childEnv, err := run.BuildChildEnvironment(ctx, svc, serviceName, proxyAddress, caCertPath)
 	if err != nil {
 		shutdownMgr.Shutdown(5 * time.Second)
 		return err

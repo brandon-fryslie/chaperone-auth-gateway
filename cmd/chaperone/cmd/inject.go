@@ -14,11 +14,7 @@ import (
 )
 
 var (
-	version    = "0.1.0" // Set during build via ldflags
-	socketPath string    // CLI flag for Unix socket path
-	httpMode   bool      // CLI flag to force HTTP/TCP mode
-	httpPort   int       // CLI flag for HTTP port (implies HTTP mode)
-	httpAddr   string    // CLI flag for HTTP address (implies HTTP mode)
+	version = "0.1.0" // Set during build via ldflags
 )
 
 // injectCmd represents the inject command
@@ -30,25 +26,17 @@ var injectCmd = &cobra.Command{
 When called without arguments, serves all services from config.
 When called with a service name, serves only that specific service.
 
-By default, Chaperone listens on a Unix socket (auto-generated path) for better security.
-Use --http flag to enable TCP mode instead.
+Always listens on 127.0.0.1 with OS-allocated port for security.
 
 Examples:
-  chaperone inject                    # Serve all services (Unix socket mode)
-  chaperone inject openai             # Serve only the openai service
-  chaperone inject --socket /run/chaperone/proxy.sock  # Custom socket path
-  chaperone inject --http             # Use TCP mode (127.0.0.1:4010)
-  chaperone inject --http --port 8080 # Use TCP mode on custom port`,
+  chaperone inject                    # Serve all services
+  chaperone inject openai             # Serve only the openai service`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runInject,
 }
 
 func init() {
 	rootCmd.AddCommand(injectCmd)
-	injectCmd.Flags().StringVar(&socketPath, "socket", "", "Unix socket path (default: auto-generated)")
-	injectCmd.Flags().BoolVar(&httpMode, "http", false, "Use HTTP/TCP mode instead of Unix socket")
-	injectCmd.Flags().IntVar(&httpPort, "port", 0, "Port to listen on (implies --http, default 4010)")
-	injectCmd.Flags().StringVar(&httpAddr, "addr", "", "Address to listen on (implies --http, default 127.0.0.1)")
 }
 
 func runInject(cmd *cobra.Command, args []string) error {
@@ -71,14 +59,6 @@ func runInject(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-
-	// Apply CLI flags for transport mode
-	orchestrate.ApplyTransportFlags(cfg, orchestrate.TransportFlags{
-		SocketPath: socketPath,
-		HTTPMode:   httpMode,
-		HTTPPort:   httpPort,
-		HTTPAddr:   httpAddr,
-	})
 
 	// Apply defaults and validate
 	cfg.SetDefaults()
