@@ -175,7 +175,6 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "\n%s=== Chaperone Run Mode ===%s\n\n", runCyan+runBold, runReset)
 	fmt.Fprintf(os.Stderr, "%sService:%s  %s\n", runBlue+runBold, runReset, serviceName)
 	fmt.Fprintf(os.Stderr, "%sCommand:%s  %s\n", runBlue+runBold, runReset, formatRunCommand(svc.Run.Command, svc.Run.Args))
-	fmt.Fprintf(os.Stderr, "%sProxy:%s    %s\n", runBlue+runBold, runReset, proxyAddress)
 	fmt.Fprintf(os.Stderr, "%sLog file:%s %s\n\n", runBlue+runBold, runReset, logPath)
 
 	log.Info(ctx, "starting child process",
