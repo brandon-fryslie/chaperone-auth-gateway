@@ -430,19 +430,24 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		sentinelChan = make(chan struct{})
 	}
 
-	server := proxy.NewExamineProxy(cfg, slog.Default(), shutdownMgr, certCache, examineLogger, rec, sentinelChan)
+	// Generate proxy secret for authentication
+	proxySecret, err := proxy.GenerateProxySecret()
+	if err != nil {
+		return fmt.Errorf("failed to generate proxy secret: %w", err)
+	}
+
+	server := proxy.NewExamineProxy(cfg, slog.Default(), shutdownMgr, certCache, examineLogger, rec, sentinelChan, proxySecret)
 
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start examine proxy: %w", err)
 	}
 
-	// Get the actual listening address (OS-allocated port)
-	actualAddr := server.Addr()
-	proxyURL := fmt.Sprintf("http://%s", actualAddr)
+	// Get the proxy URL with embedded credentials
+	proxyURL := server.ProxyURL()
 
 	// Update manual mode output with actual address
 	if len(cliCommand) == 0 {
-		fmt.Printf("\nProxy listening on: %s\n", proxyURL)
+		fmt.Printf("\nProxy listening on: %s\n", server.Addr())
 		fmt.Printf("Configure your application to use this as proxy\n")
 		fmt.Printf("Example:\n")
 		fmt.Printf("  export HTTP_PROXY=%s\n", proxyURL)

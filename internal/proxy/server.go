@@ -31,6 +31,7 @@ type Server struct {
 	listener    net.Listener
 	recorder    *recorder.Recorder
 	auditLogger *audit.Logger
+	proxySecret string // Per-run secret for proxy authentication
 	mu          sync.Mutex
 	started     bool
 }
@@ -90,6 +91,10 @@ type MITMOptions struct {
 	// AuthRegistry provides authentication strategy implementations.
 	// If nil, authentication will be skipped (backward compatibility).
 	AuthRegistry *auth.Registry
+
+	// ProxySecret is the per-run secret for proxy Basic auth.
+	// If empty, proxy authentication is disabled (INSECURE).
+	ProxySecret string
 }
 
 // NewWithMITM creates a new proxy server with MITM capabilities.
@@ -145,6 +150,13 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		authRegistry = options.AuthRegistry
 	}
 
+	// Get proxy secret (if provided)
+	var proxySecret string
+	if options != nil && options.ProxySecret != "" {
+		proxySecret = options.ProxySecret
+		s.proxySecret = proxySecret
+	}
+
 	// Create policy enforcer
 	enforcer := service.NewPolicyEnforcer(logger)
 
@@ -159,29 +171,40 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	certStore := NewGoproxyCertStore(certCache)
 
 	// Configure CONNECT handler (MITM vs transparent tunnel decision)
-	proxy.OnRequest().HandleConnectFunc(connectHandler(registry, certStore, logger))
+	// Wrap with proxy auth if secret is configured
+	baseConnectHandler := connectHandler(registry, certStore, logger)
+	if proxySecret != "" {
+		proxy.OnRequest().HandleConnectFunc(proxyAuthConnectHandler(proxySecret, baseConnectHandler))
+	} else {
+		proxy.OnRequest().HandleConnectFunc(baseConnectHandler)
+	}
 
 	// Configure request handlers in order:
-	// 0. Request ID setup (MUST be first so all handlers have request ID for logging)
+	// 0. Proxy authentication (MUST be first - reject unauthorized requests)
+	if proxySecret != "" {
+		proxy.OnRequest().DoFunc(proxyAuthHandler(proxySecret))
+	}
+
+	// 1. Request ID setup (so all handlers have request ID for logging)
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(requestIDHandler())
 
-	// 1. Drop handler (block requests matching drop patterns)
+	// 2. Drop handler (block requests matching drop patterns)
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(dropHandler(registry, auditLogger, logger))
 
-	// 2. SECURITY: Auto-strip ALL known auth headers (prevents credential leakage)
+	// 3. SECURITY: Auto-strip ALL known auth headers (prevents credential leakage)
 	// This is NOT configurable - it's a security measure that always runs
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(securityStripAuthHandler(registry, auditLogger, logger))
 
-	// 3. Policy enforcement (check methods, paths, body size)
+	// 4. Policy enforcement (check methods, paths, body size)
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(policyHandler(registry, enforcer, auditLogger, logger))
 
-	// 4. User-configurable strip handler (remove additional headers)
+	// 5. User-configurable strip handler (remove additional headers)
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(stripHandler(registry, logger))
 
-	// 5. Authentication injection
+	// 6. Authentication injection
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(authHandler(registry, secretRegistry, authRegistry, auditLogger, logger))
 
-	// 6. HAR recording - request start
+	// 7. HAR recording - request start
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(recordRequestHandler(s.recorder))
 
 	// Configure response handler for HAR recording
@@ -205,7 +228,8 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 // This mode is used by 'chaperone examine' to help users discover how authentication
 // credentials are passed in requests.
 // If recorder is provided, it will capture traffic in HAR format.
-func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger, rec *recorder.Recorder, sentinelChan chan struct{}) *Server {
+// If proxySecret is provided, proxy requires authentication.
+func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger, rec *recorder.Recorder, sentinelChan chan struct{}, proxySecret string) *Server {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -215,6 +239,7 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 		logger:      logger,
 		shutdownMgr: shutdownMgr,
 		recorder:    rec,
+		proxySecret: proxySecret,
 	}
 
 	// Create goproxy server
@@ -230,9 +255,20 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	certStore := NewGoproxyCertStore(certCache)
 
 	// Configure CONNECT handler - MITM ALL connections (no filtering)
-	proxy.OnRequest().HandleConnectFunc(examine.ConnectHandler(certStore, logger))
+	// Wrap with proxy auth if secret is configured
+	baseConnectHandler := examine.ConnectHandler(certStore, logger)
+	if proxySecret != "" {
+		proxy.OnRequest().HandleConnectFunc(proxyAuthConnectHandler(proxySecret, baseConnectHandler))
+	} else {
+		proxy.OnRequest().HandleConnectFunc(baseConnectHandler)
+	}
 
-	// Add request ID handler FIRST - provides correlation colors for all requests
+	// Add proxy authentication handler FIRST (if configured)
+	if proxySecret != "" {
+		proxy.OnRequest().DoFunc(proxyAuthHandler(proxySecret))
+	}
+
+	// Add request ID handler - provides correlation colors for all requests
 	proxy.OnRequest().DoFunc(requestIDHandler())
 
 	// Configure request handler - log ALL requests
@@ -323,6 +359,21 @@ func (s *Server) Addr() string {
 		return s.listener.Addr().String()
 	}
 	return ""
+}
+
+// ProxyURL returns the proxy URL with embedded credentials for use in HTTP_PROXY.
+// If no proxy secret is configured, returns a plain URL.
+// Returns empty string if server is not started.
+func (s *Server) ProxyURL() string {
+	addr := s.Addr()
+	if addr == "" {
+		return ""
+	}
+
+	if s.proxySecret != "" {
+		return "http://" + ProxyAuthUser + ":" + s.proxySecret + "@" + addr
+	}
+	return "http://" + addr
 }
 
 // GetRecorder returns the HAR recorder (for testing/debugging).

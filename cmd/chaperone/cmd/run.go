@@ -12,6 +12,7 @@ import (
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/orchestrate"
+	"github.com/bmf/chaperone/internal/proxy"
 	"github.com/bmf/chaperone/internal/run"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
@@ -149,8 +150,14 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create and start proxy server
-	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result)
+	// Generate proxy secret for authentication
+	proxySecret, err := proxy.GenerateProxySecret()
+	if err != nil {
+		return fmt.Errorf("failed to generate proxy secret: %w", err)
+	}
+
+	// Create and start proxy server with authentication
+	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, proxySecret)
 
 	log.Info(ctx, "starting proxy server", "address", cfg.Server.Address)
 	if err := proxyServer.Start(); err != nil {
@@ -159,12 +166,11 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 
 	log.Info(ctx, "proxy server started successfully")
 
-	// Get the actual port assigned by the OS
-	actualAddr := proxyServer.Addr()
-	proxyAddress := fmt.Sprintf("http://%s", actualAddr)
+	// Get the proxy URL with embedded credentials
+	proxyURL := proxyServer.ProxyURL()
 
 	// Build environment for child process
-	childEnv, err := run.BuildChildEnvironment(ctx, svc, serviceName, proxyAddress, caCertPath)
+	childEnv, err := run.BuildChildEnvironment(ctx, svc, serviceName, proxyURL, caCertPath)
 	if err != nil {
 		shutdownMgr.Shutdown(5 * time.Second)
 		return err

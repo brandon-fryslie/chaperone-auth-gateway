@@ -84,7 +84,8 @@ func InitializeEphemeralCA(ctx context.Context, pid int, shutdownMgr *shutdown.M
 
 // CreateProxy creates a proxy server based on the setup result.
 // Returns a MITM-enabled proxy if services are configured, otherwise a transparent proxy.
-func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, result *SetupResult) *proxy.Server {
+// If proxySecret is provided, proxy requires authentication.
+func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, result *SetupResult, proxySecret string) *proxy.Server {
 	var proxyServer *proxy.Server
 	if len(result.ServiceRegistry.ListAll()) > 0 {
 		// Use MITM-enabled proxy if services are configured
@@ -98,6 +99,7 @@ func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, s
 			&proxy.MITMOptions{
 				SecretRegistry: result.SecretRegistry,
 				AuthRegistry:   result.AuthRegistry,
+				ProxySecret:    proxySecret,
 			},
 		)
 		log.Info(ctx, "proxy server created with MITM support and authentication")

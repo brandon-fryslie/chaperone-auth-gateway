@@ -101,7 +101,8 @@ func runInject(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create proxy server with MITM support or transparent mode
-	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result)
+	// Inject mode has no proxy auth - it's for manual use where user sets HTTP_PROXY
+	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, "")
 
 	// Start proxy server
 	if err := proxyServer.Start(); err != nil {
