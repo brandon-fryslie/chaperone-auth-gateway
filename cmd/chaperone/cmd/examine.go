@@ -466,7 +466,7 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		envBuilder.InheritParent()
 		envBuilder.Set("HTTP_PROXY", proxyURL)
 		envBuilder.Set("HTTPS_PROXY", proxyURL)
-		envBuilder.Set("CHAPERONE_SERVICE", "examine")
+		envBuilder.Set("NODE_USE_ENV_PROXY", "1")
 
 		// Get CA paths for environment
 		_, _, caCertPath, err := getCAPath()

@@ -89,11 +89,11 @@ func (eb *EnvBuilder) Set(key, value string) *EnvBuilder {
 }
 
 // SetProxyVars sets the proxy-related environment variables.
-// Adds: HTTP_PROXY, HTTPS_PROXY, CHAPERONE_SERVICE
-func (eb *EnvBuilder) SetProxyVars(proxyAddress string, serviceName string) *EnvBuilder {
+// Adds: HTTP_PROXY, HTTPS_PROXY, NODE_USE_ENV_PROXY
+func (eb *EnvBuilder) SetProxyVars(proxyAddress string) *EnvBuilder {
 	eb.env["HTTP_PROXY"] = proxyAddress
 	eb.env["HTTPS_PROXY"] = proxyAddress
-	eb.env["CHAPERONE_SERVICE"] = serviceName
+	eb.env["NODE_USE_ENV_PROXY"] = "1" // Enable Node.js proxy auth from env vars
 	return eb
 }
 
@@ -198,7 +198,7 @@ func BuildChildEnvironment(ctx context.Context, svc *config.ServiceConfig, servi
 	}
 
 	// Set proxy environment variables
-	envBuilder.SetProxyVars(proxyAddress, serviceName)
+	envBuilder.SetProxyVars(proxyAddress)
 
 	// Set CA environment variables
 	log.Info(ctx, "setting CA environment variables",
