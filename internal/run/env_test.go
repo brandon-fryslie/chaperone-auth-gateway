@@ -81,6 +81,7 @@ func TestEnvBuilder_SetCAEnvVars(t *testing.T) {
 				"NODE_EXTRA_CA_CERTS": "/tmp/ca-cert.pem",
 				"REQUESTS_CA_BUNDLE":  "/tmp/ca-cert.pem",
 				"CURL_CA_BUNDLE":      "/tmp/ca-cert.pem",
+				"GIT_SSL_CAINFO":      "/tmp/ca-cert.pem",
 				"CHAPERONE_CA_CERT":   "/tmp/ca-cert.pem",
 			},
 		},
@@ -93,6 +94,7 @@ func TestEnvBuilder_SetCAEnvVars(t *testing.T) {
 				"NODE_EXTRA_CA_CERTS": "/tmp/ca-cert.pem",
 				"REQUESTS_CA_BUNDLE":  "/tmp/ca-cert.pem",
 				"CURL_CA_BUNDLE":      "/tmp/ca-cert.pem",
+				"GIT_SSL_CAINFO":      "/tmp/ca-cert.pem",
 				"CHAPERONE_CA_CERT":   "/tmp/ca-cert.pem",
 			},
 		},
@@ -138,6 +140,7 @@ func TestEnvBuilder_SetCAEnvVars(t *testing.T) {
 				"NODE_EXTRA_CA_CERTS",
 				"REQUESTS_CA_BUNDLE",
 				"CURL_CA_BUNDLE",
+				"GIT_SSL_CAINFO",
 				"CHAPERONE_CA_CERT",
 			}
 			for _, varName := range caRelatedVars {
@@ -336,6 +339,7 @@ func TestEnvBuilder_Chaining_WithCAEnvVars(t *testing.T) {
 		"NODE_EXTRA_CA_CERTS",
 		"REQUESTS_CA_BUNDLE",
 		"CURL_CA_BUNDLE",
+		"GIT_SSL_CAINFO",
 		"CHAPERONE_CA_CERT",
 	}
 	for _, varName := range expectedCAVars {

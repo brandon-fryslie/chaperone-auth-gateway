@@ -104,10 +104,11 @@ func (eb *EnvBuilder) SetCAEnvVars(caCertPath string, caEnvVars []string) *EnvBu
 	if len(caEnvVars) == 0 {
 		// Default: set all standard CA environment variables
 		caEnvVars = []string{
-			"SSL_CERT_FILE",
-			"NODE_EXTRA_CA_CERTS",
-			"REQUESTS_CA_BUNDLE",
-			"CURL_CA_BUNDLE",
+			"SSL_CERT_FILE",      // OpenSSL, Go, many tools
+			"NODE_EXTRA_CA_CERTS", // Node.js
+			"REQUESTS_CA_BUNDLE", // Python requests
+			"CURL_CA_BUNDLE",     // curl/libcurl
+			"GIT_SSL_CAINFO",     // Git
 		}
 	}
 
