@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/bmf/chaperone/internal/config"
@@ -14,6 +15,15 @@ import (
 	"github.com/bmf/chaperone/internal/run"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
+)
+
+// ANSI color codes for run command output
+const (
+	runReset = "\033[0m"
+	runBold  = "\033[1m"
+	runCyan  = "\033[36m"
+	runBlue  = "\033[34m"
+	runGreen = "\033[32m"
 )
 
 // runCmd represents the run command
@@ -51,6 +61,14 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(runCmd)
+}
+
+// formatRunCommand formats a command and args as a display string
+func formatRunCommand(cmd string, args []string) string {
+	if len(args) == 0 {
+		return cmd
+	}
+	return cmd + " " + strings.Join(args, " ")
 }
 
 func runWithProxy(cmd *cobra.Command, args []string) error {
@@ -152,9 +170,13 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Print log file path to stderr BEFORE starting child
+	// Print startup banner to stderr BEFORE starting child
 	// After this, all chaperone output goes to the log file only
-	fmt.Fprintf(os.Stderr, "Log file: %s\n", logPath)
+	fmt.Fprintf(os.Stderr, "\n%s=== Chaperone Run Mode ===%s\n\n", runCyan+runBold, runReset)
+	fmt.Fprintf(os.Stderr, "%sService:%s  %s\n", runBlue+runBold, runReset, serviceName)
+	fmt.Fprintf(os.Stderr, "%sCommand:%s  %s\n", runBlue+runBold, runReset, formatRunCommand(svc.Run.Command, svc.Run.Args))
+	fmt.Fprintf(os.Stderr, "%sProxy:%s    %s\n", runBlue+runBold, runReset, proxyAddress)
+	fmt.Fprintf(os.Stderr, "%sLog file:%s %s\n\n", runBlue+runBold, runReset, logPath)
 
 	log.Info(ctx, "starting child process",
 		"command", svc.Run.Command,
