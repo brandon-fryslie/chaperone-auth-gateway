@@ -21,16 +21,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const (
-	reset   = "\033[0m"
-	bold    = "\033[1m"
-	cyan    = "\033[36m"
-	green   = "\033[32m"
-	blue    = "\033[34m"
-	yellow  = "\033[33m"
-	magenta = "\033[35m"
-)
-
 var (
 	// Examine flags
 	showBody        bool
@@ -86,7 +76,7 @@ func printCompleteConfig(ctx context.Context, examineLogger *examine.Logger) {
 	}
 
 	if headerDisc == nil {
-		fmt.Fprintf(os.Stderr, "\n%sNo auth headers discovered.%s\n", yellow, reset)
+		fmt.Fprintf(os.Stderr, "\n%sNo auth headers discovered.%s\n", run.Yellow, run.Reset)
 		return
 	}
 
@@ -106,7 +96,7 @@ func printCompleteConfig(ctx context.Context, examineLogger *examine.Logger) {
 	strategy := examine.GuessAuthStrategy(headerDisc.HeaderName)
 
 	// Print complete config
-	fmt.Fprintf(os.Stderr, "\n%s=== Complete Configuration ===%s\n\n", cyan+bold, reset)
+	fmt.Fprintf(os.Stderr, "\n%s=== Complete Configuration ===%s\n\n", run.Cyan+run.Bold, run.Reset)
 	fmt.Fprintf(os.Stderr, "[services.%s]\n", serviceName)
 	fmt.Fprintf(os.Stderr, "host_pattern = \"%s\"\n", hostPattern)
 	fmt.Fprintf(os.Stderr, "auth_strategy = \"%s\"\n", strategy)
@@ -377,19 +367,18 @@ func runExamine(cmd *cobra.Command, args []string) error {
 	// Print startup info based on execution mode
 	if len(cliCommand) > 0 {
 		// Command mode: print info and wait for user
-		fmt.Fprintf(os.Stderr, "\n%s=== Chaperone Examine Mode ===%s\n\n", cyan+bold, reset)
+		fmt.Fprintf(os.Stderr, "\n%s=== Chaperone Examine Mode ===%s\n\n", run.Cyan+run.Bold, run.Reset)
 		fmt.Fprintf(os.Stderr, "Chaperone will start a proxy server and launch your command.\n")
 		fmt.Fprintf(os.Stderr, "The proxy will log all requests to help you discover authentication patterns.\n\n")
-		fmt.Fprintf(os.Stderr, "%sCommand:%s %s\n", blue+bold, reset, formatCommand(cliCommand))
-		fmt.Fprintf(os.Stderr, "%sLog file:%s %s\n", blue+bold, reset, logPath)
-		fmt.Fprintf(os.Stderr, "%sTo print logs from latest run:%s tail -F /tmp/chaperone-examine.latest.log\n\n", blue+bold, reset)
 
-		if enableHAR {
-			fmt.Fprintf(os.Stderr, "%sHAR Recording:%s %sENABLED%s\n", blue+bold, reset, green+bold, reset)
-			fmt.Fprintf(os.Stderr, "%sHAR file:%s %s\n\n", blue+bold, reset, harPath)
-		}
+		run.PrintExamineBanner(os.Stderr, run.ExamineBannerConfig{
+			Command:    formatCommand(cliCommand),
+			LogPath:    logPath,
+			HAREnabled: enableHAR,
+			HARPath:    harPath,
+		})
 
-		fmt.Fprintf(os.Stderr, "%sPress return to continue...%s", magenta, reset)
+		fmt.Fprintf(os.Stderr, "%sPress return to continue...%s", run.Magenta, run.Reset)
 
 		// Wait for user input from /dev/tty (not stdin, to avoid interfering with child process)
 		tty, err := os.Open("/dev/tty")

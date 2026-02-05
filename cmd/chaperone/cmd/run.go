@@ -17,15 +17,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// ANSI color codes for run command output
-const (
-	runReset = "\033[0m"
-	runBold  = "\033[1m"
-	runCyan  = "\033[36m"
-	runBlue  = "\033[34m"
-	runGreen = "\033[32m"
-)
-
 // runCmd represents the run command
 var runCmd = &cobra.Command{
 	Use:   "run <service-name> [-- <command> <arg1> <arg2> ...]",
@@ -168,16 +159,17 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	// Get the proxy URL with embedded credentials
 	proxyURL := proxyServer.ProxyURL()
 
-	// Print startup banner to stderr BEFORE starting child
-	// After this, all chaperone output goes to the log file only
-	fmt.Fprintf(os.Stderr, "\n%s=== Chaperone Run Mode ===%s\n\n", runCyan+runBold, runReset)
-	fmt.Fprintf(os.Stderr, "%sService:%s  %s\n", runBlue+runBold, runReset, serviceName)
-	fmt.Fprintf(os.Stderr, "%sCommand:%s  %s\n", runBlue+runBold, runReset, formatRunCommand(svc.Run.Command, svc.Run.Args))
-	fmt.Fprintf(os.Stderr, "%sLog file:%s %s\n\n", runBlue+runBold, runReset, logPath)
-
 	// Build command line
 	command := []string{svc.Run.Command}
 	command = append(command, svc.Run.Args...)
+
+	// Print startup banner to stderr BEFORE starting child
+	// After this, all chaperone output goes to the log file only
+	run.PrintRunBanner(os.Stderr, run.RunBannerConfig{
+		Service: serviceName,
+		Command: formatRunCommand(svc.Run.Command, svc.Run.Args),
+		LogPath: logPath,
+	})
 
 	// Configure process
 	processCfg := run.ProcessConfig{
