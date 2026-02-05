@@ -164,6 +164,12 @@ func (l *Logger) logAuthHeaderLine(ctx context.Context, name, value, url string)
 	// Track the discovery
 	l.discovery.TrackHeader(name, url, truncated, foundSentinel, isStandardAuth)
 
+	// Only log if we haven't seen this header before
+	if l.discovery.HasSeenHeader(name) {
+		return foundSentinel
+	}
+	l.discovery.MarkHeaderSeen(name)
+
 	// Format the detail message
 	var detailText string
 	var color string
@@ -178,7 +184,7 @@ func (l *Logger) logAuthHeaderLine(ctx context.Context, name, value, url string)
 		color = "green"
 		showBg = true
 	} else {
-		detailText = "Possible auth in header: " + name + "=" + truncated
+		detailText = "Interesting header: " + name + "=" + truncated
 		color = "orange"
 		showBg = true
 	}

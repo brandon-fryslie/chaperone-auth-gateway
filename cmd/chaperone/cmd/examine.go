@@ -107,8 +107,13 @@ func printCompleteConfig(ctx context.Context, examineLogger *examine.Logger) {
 		return
 	}
 
-	// Extract hostname from URL
-	hostPattern := examine.ExtractHostFromURL(headerDisc.URL)
+	// Extract hostname from URL (use first URL)
+	var hostPattern string
+	if len(headerDisc.URLs) > 0 {
+		hostPattern = examine.ExtractHostFromURL(headerDisc.URLs[0])
+	} else {
+		hostPattern = "api.example.com"
+	}
 	serviceName := examineLogger.GetCommandName()
 	if serviceName == "" {
 		serviceName = "myservice"

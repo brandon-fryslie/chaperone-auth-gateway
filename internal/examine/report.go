@@ -38,25 +38,43 @@ func (l *Logger) PrintSummaryReport(ctx context.Context) {
 
 	// Log sentinel matches
 	if len(sentinelHeaders) > 0 {
-		log.Detail(ctx, "detail_text", "✓ Sentinel value found in:", "detail_color", "green")
+		log.Detail(ctx, "detail_text", "✓ Sentinel value found in:", "detail_color", "lightblue", "detail_bg", true)
+		log.Detail(ctx, "detail_text", "")
 		for _, disc := range sentinelHeaders {
-			log.Detail(ctx, "detail_text", "  - "+disc.HeaderName+" sent to "+disc.URL)
+			// Header name in color
+			log.Detail(ctx, "detail_text", disc.HeaderName, "detail_color", "lightblue", "detail_bg", true)
+			for _, url := range disc.URLs {
+				log.Detail(ctx, "detail_text", "  - "+url)
+			}
+			log.Detail(ctx, "detail_text", "")
 		}
 	}
 
 	// Log standard auth headers
 	if len(standardHeaders) > 0 {
-		log.Detail(ctx, "detail_text", "✓ Standard auth headers found:", "detail_color", "green")
+		log.Detail(ctx, "detail_text", "✓ Standard auth headers found:", "detail_color", "green", "detail_bg", true)
+		log.Detail(ctx, "detail_text", "")
 		for _, disc := range standardHeaders {
-			log.Detail(ctx, "detail_text", "  - "+disc.HeaderName+" sent to "+disc.URL)
+			// Header name in color
+			log.Detail(ctx, "detail_text", disc.HeaderName, "detail_color", "green", "detail_bg", true)
+			for _, url := range disc.URLs {
+				log.Detail(ctx, "detail_text", "  - "+url)
+			}
+			log.Detail(ctx, "detail_text", "")
 		}
 	}
 
-	// Log possible headers
+	// Log possible headers (renamed to "interesting")
 	if len(possibleHeaders) > 0 {
-		log.Detail(ctx, "detail_text", "? Possible auth headers:", "detail_color", "yellow")
+		log.Detail(ctx, "detail_text", "? Interesting headers:", "detail_color", "orange", "detail_bg", true)
+		log.Detail(ctx, "detail_text", "")
 		for _, disc := range possibleHeaders {
-			log.Detail(ctx, "detail_text", "  - "+disc.HeaderName+" sent to "+disc.URL)
+			// Header name in color
+			log.Detail(ctx, "detail_text", disc.HeaderName, "detail_color", "orange", "detail_bg", true)
+			for _, url := range disc.URLs {
+				log.Detail(ctx, "detail_text", "  - "+url)
+			}
+			log.Detail(ctx, "detail_text", "")
 		}
 	}
 
@@ -81,8 +99,13 @@ func (l *Logger) printExampleConfig(ctx context.Context, sentinels, standards, p
 		return
 	}
 
-	// Extract hostname from URL
-	hostPattern := ExtractHostFromURL(exampleHeader.URL)
+	// Extract hostname from URL (use first URL)
+	var hostPattern string
+	if len(exampleHeader.URLs) > 0 {
+		hostPattern = ExtractHostFromURL(exampleHeader.URLs[0])
+	} else {
+		hostPattern = "api.example.com"
+	}
 
 	// Determine service name
 	serviceName := "myservice"
