@@ -77,12 +77,17 @@ func TestEnvBuilder_SetCAEnvVars(t *testing.T) {
 			caCertPath: "/tmp/ca-cert.pem",
 			caEnvVars:  nil,
 			wantEnvVars: map[string]string{
-				"SSL_CERT_FILE":       "/tmp/ca-cert.pem",
-				"NODE_EXTRA_CA_CERTS": "/tmp/ca-cert.pem",
-				"REQUESTS_CA_BUNDLE":  "/tmp/ca-cert.pem",
-				"CURL_CA_BUNDLE":      "/tmp/ca-cert.pem",
-				"GIT_SSL_CAINFO":      "/tmp/ca-cert.pem",
-				"CHAPERONE_CA_CERT":   "/tmp/ca-cert.pem",
+				"SSL_CERT_FILE":                  "/tmp/ca-cert.pem",
+				"CURL_CA_BUNDLE":                 "/tmp/ca-cert.pem",
+				"NODE_EXTRA_CA_CERTS":            "/tmp/ca-cert.pem",
+				"REQUESTS_CA_BUNDLE":             "/tmp/ca-cert.pem",
+				"HTTPX_CA_BUNDLE":                "/tmp/ca-cert.pem",
+				"GIT_SSL_CAINFO":                 "/tmp/ca-cert.pem",
+				"PERL_LWP_SSL_CA_FILE":           "/tmp/ca-cert.pem",
+				"HTTPS_CA_FILE":                  "/tmp/ca-cert.pem",
+				"AWS_CA_BUNDLE":                  "/tmp/ca-cert.pem",
+				"HOMEBREW_CERTIFICATE_AUTHORITY": "/tmp/ca-cert.pem",
+				"CHAPERONE_CA_CERT":              "/tmp/ca-cert.pem",
 			},
 		},
 		{
@@ -90,12 +95,17 @@ func TestEnvBuilder_SetCAEnvVars(t *testing.T) {
 			caCertPath: "/tmp/ca-cert.pem",
 			caEnvVars:  []string{},
 			wantEnvVars: map[string]string{
-				"SSL_CERT_FILE":       "/tmp/ca-cert.pem",
-				"NODE_EXTRA_CA_CERTS": "/tmp/ca-cert.pem",
-				"REQUESTS_CA_BUNDLE":  "/tmp/ca-cert.pem",
-				"CURL_CA_BUNDLE":      "/tmp/ca-cert.pem",
-				"GIT_SSL_CAINFO":      "/tmp/ca-cert.pem",
-				"CHAPERONE_CA_CERT":   "/tmp/ca-cert.pem",
+				"SSL_CERT_FILE":                  "/tmp/ca-cert.pem",
+				"CURL_CA_BUNDLE":                 "/tmp/ca-cert.pem",
+				"NODE_EXTRA_CA_CERTS":            "/tmp/ca-cert.pem",
+				"REQUESTS_CA_BUNDLE":             "/tmp/ca-cert.pem",
+				"HTTPX_CA_BUNDLE":                "/tmp/ca-cert.pem",
+				"GIT_SSL_CAINFO":                 "/tmp/ca-cert.pem",
+				"PERL_LWP_SSL_CA_FILE":           "/tmp/ca-cert.pem",
+				"HTTPS_CA_FILE":                  "/tmp/ca-cert.pem",
+				"AWS_CA_BUNDLE":                  "/tmp/ca-cert.pem",
+				"HOMEBREW_CERTIFICATE_AUTHORITY": "/tmp/ca-cert.pem",
+				"CHAPERONE_CA_CERT":              "/tmp/ca-cert.pem",
 			},
 		},
 		{
@@ -137,10 +147,15 @@ func TestEnvBuilder_SetCAEnvVars(t *testing.T) {
 			// Check no extra CA-related vars are set
 			caRelatedVars := []string{
 				"SSL_CERT_FILE",
+				"CURL_CA_BUNDLE",
 				"NODE_EXTRA_CA_CERTS",
 				"REQUESTS_CA_BUNDLE",
-				"CURL_CA_BUNDLE",
+				"HTTPX_CA_BUNDLE",
 				"GIT_SSL_CAINFO",
+				"PERL_LWP_SSL_CA_FILE",
+				"HTTPS_CA_FILE",
+				"AWS_CA_BUNDLE",
+				"HOMEBREW_CERTIFICATE_AUTHORITY",
 				"CHAPERONE_CA_CERT",
 			}
 			for _, varName := range caRelatedVars {
@@ -336,10 +351,15 @@ func TestEnvBuilder_Chaining_WithCAEnvVars(t *testing.T) {
 	// Should have CA vars
 	expectedCAVars := []string{
 		"SSL_CERT_FILE",
+		"CURL_CA_BUNDLE",
 		"NODE_EXTRA_CA_CERTS",
 		"REQUESTS_CA_BUNDLE",
-		"CURL_CA_BUNDLE",
+		"HTTPX_CA_BUNDLE",
 		"GIT_SSL_CAINFO",
+		"PERL_LWP_SSL_CA_FILE",
+		"HTTPS_CA_FILE",
+		"AWS_CA_BUNDLE",
+		"HOMEBREW_CERTIFICATE_AUTHORITY",
 		"CHAPERONE_CA_CERT",
 	}
 	for _, varName := range expectedCAVars {

@@ -102,13 +102,33 @@ func (eb *EnvBuilder) SetProxyVars(proxyAddress string, serviceName string) *Env
 // Always sets CHAPERONE_CA_CERT regardless of caEnvVars.
 func (eb *EnvBuilder) SetCAEnvVars(caCertPath string, caEnvVars []string) *EnvBuilder {
 	if len(caEnvVars) == 0 {
-		// Default: set all standard CA environment variables
+		// Default: set all standard CA environment variables for comprehensive coverage
 		caEnvVars = []string{
-			"SSL_CERT_FILE",      // OpenSSL, Go, many tools
-			"NODE_EXTRA_CA_CERTS", // Node.js
-			"REQUESTS_CA_BUNDLE", // Python requests
-			"CURL_CA_BUNDLE",     // curl/libcurl
-			"GIT_SSL_CAINFO",     // Git
+			// OpenSSL / LibSSL (used by many tools)
+			"SSL_CERT_FILE",
+
+			// cURL / libcurl
+			"CURL_CA_BUNDLE",
+
+			// Node.js
+			"NODE_EXTRA_CA_CERTS",
+
+			// Python (requests, httpx, others)
+			"REQUESTS_CA_BUNDLE",
+			"HTTPX_CA_BUNDLE",
+
+			// Git
+			"GIT_SSL_CAINFO",
+
+			// Perl (LWP, HTTPS)
+			"PERL_LWP_SSL_CA_FILE",
+			"HTTPS_CA_FILE",
+
+			// AWS CLI
+			"AWS_CA_BUNDLE",
+
+			// Homebrew
+			"HOMEBREW_CERTIFICATE_AUTHORITY",
 		}
 	}
 
