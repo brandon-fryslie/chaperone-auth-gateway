@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -88,6 +89,23 @@ func (s *Server) Stop(ctx context.Context) error {
 	return nil
 }
 
+// writeJSON encodes v as the response body with the given status. The status and
+// headers are already committed once encoding starts, so a failure can't be
+// recovered — but it must not vanish: it is surfaced to the daemon's operational
+// log ([LAW:no-silent-failure]).
+func (s *Server) writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		s.logger.Error("control: failed to encode response", "status", status, "error", err)
+	}
+}
+
+// writeError sends a non-2xx response carrying err's message verbatim.
+func (s *Server) writeError(w http.ResponseWriter, status int, err error) {
+	s.writeJSON(w, status, errorBody{Error: err.Error()})
+}
+
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc(PathGrant, s.handleGrant)
@@ -99,54 +117,54 @@ func (s *Server) routes() http.Handler {
 
 func (s *Server) handleGrant(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use POST"))
+		s.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use POST"))
 		return
 	}
 	var req GrantRequest
 	if err := decodeJSON(r.Body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		s.writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	res, err := s.api.Grant(req)
 	if err != nil {
-		writeError(w, statusFor(err), err)
+		s.writeError(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	s.writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use POST"))
+		s.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use POST"))
 		return
 	}
 	var req RevokeRequest
 	if err := decodeJSON(r.Body, &req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		s.writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	res, err := s.api.Revoke(req)
 	if err != nil {
-		writeError(w, statusFor(err), err)
+		s.writeError(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, res)
+	s.writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use GET"))
+		s.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use GET"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.api.List())
+	s.writeJSON(w, http.StatusOK, s.api.List())
 }
 
 func (s *Server) handleListGrantable(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use GET"))
+		s.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use GET"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.api.ListGrantable())
+	s.writeJSON(w, http.StatusOK, s.api.ListGrantable())
 }
 
 // statusFor maps a control failure to its HTTP outcome contract. A non-apiError

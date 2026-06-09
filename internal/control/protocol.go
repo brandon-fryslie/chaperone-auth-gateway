@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 
 	"github.com/bmf/chaperone/internal/service"
 )
@@ -141,19 +140,6 @@ type ListGrantableResult struct {
 // ([LAW:single-enforcer]).
 type errorBody struct {
 	Error string `json:"error"`
-}
-
-// writeJSON encodes v as the response body with the given status. This is the
-// single encoder both success and error paths route through.
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-// writeError sends a non-2xx response carrying err's message verbatim.
-func writeError(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, errorBody{Error: err.Error()})
 }
 
 // decodeJSON reads a JSON request body into v, rejecting unknown fields so a
