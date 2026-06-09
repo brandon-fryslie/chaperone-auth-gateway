@@ -14,6 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 make build              # Build chaperone binary to ./chaperone
 make all                # Alias for build
+make release            # Build release binaries for all platforms (scripts/release.sh)
+make version            # Print version from the VERSION file
 ```
 
 ### Testing
@@ -56,22 +58,23 @@ make help               # Show all targets with descriptions
 ## CLI Commands Architecture
 
 - `cmd/chaperone/cmd/inject.go` - **Inject mode**: Start proxy with credential injection (main mode)
+- `cmd/chaperone/cmd/run.go` - **Run mode**: Start proxy + spawn a child process with the proxy env injected (thin wrapper over `internal/run`)
 - `cmd/chaperone/cmd/examine.go` - **Examine mode**: Auth discovery (passthrough MITM logging)
 - `cmd/chaperone/cmd/check.go` - **Check mode**: Security posture assessment
-- `cmd/chaperone/cmd/init.go` - **Init mode**: Interactive config wizard with auth detection
 - `cmd/chaperone/cmd/mcp.go` - **MCP mode**: stdio MCP server for dynamic credential grants (thin client of the daemon's control socket)
 - `cmd/chaperone/cmd/root.go` - Root command, config resolution, CA path helpers (incl. `getControlSocketPath`)
 
 ## Core Proxy Architecture
+The request pipeline is split into one file per concern. `handlers.go` is now only the package doc comment describing the split — the handlers live in the dedicated files below.
 - `internal/proxy/server.go` - Server setup, `NewWithMITM()`, `NewExamineProxy()`, start/stop
-- `internal/proxy/handlers.go` - Request pipeline:
-  - `connectHandler` - MITM vs transparent tunnel decision
-  - `policyHandler` - Enforce allowed methods/paths/body size
-  - `authHandler` - **Main auth injection** (fetches secret, applies strategy)
-  - `recordRequestHandler/recordResponseHandler` - HAR recording
-  - `examineConnectHandler/examineRequestHandler/examineResponseHandler` - Examine mode
+- `internal/proxy/connect_handler.go` - `connectHandler` - MITM vs transparent tunnel decision
+- `internal/proxy/policy_handler.go` - `policyHandler` (methods/paths/body size) plus `dropHandler` and `stripHandler` (drop/strip policy)
+- `internal/proxy/auth_handler.go` - `authHandler` (**main injection**: fetch secret → apply strategy) and `securityStripAuthHandler` (strip client-supplied auth before injecting)
+- `internal/proxy/recording_handler.go` - `recordRequestHandler/recordResponseHandler` - traffic recording
+- `internal/proxy/proxy_auth.go` - Proxy-level authentication: `GenerateProxySecret()`, `proxyAuthHandler`, `proxyAuthConnectHandler` (gate access to the proxy itself)
 - `internal/proxy/conditions.go` - `ChaperoneCondition()` - filter which requests get auth
 - `internal/proxy/cert_adapter.go` - Adapter for goproxy cert store
+- Examine-mode handlers live in `internal/examine/handlers.go` (`ConnectHandler`/`RequestHandler`/`ResponseHandler`), not in `internal/proxy`.
 
 ## Authentication System
 - `internal/auth/strategy.go` - `Strategy` interface
@@ -97,10 +100,12 @@ make help               # Show all targets with descriptions
 - `internal/service/policy_enforcer.go` - Policy validation logic
 
 ## Examine Mode (Auth Discovery)
+- `internal/examine/handlers.go` - goproxy handlers (`ConnectHandler`/`RequestHandler`/`ResponseHandler`) — always-MITM passthrough
 - `internal/examine/logger.go` - Request/response logging
   - `Config` - Control what's logged (body, params, cookies, responses)
   - `LogRequest()` - Log request with auth-relevant headers
   - `LogResponse()` - Log response (status, headers, cookies)
+- `internal/examine/report.go` / `internal/examine/tracker.go` - Aggregate observed auth across a session into a summary report
 - `internal/examine/headers.go` - **Header filtering**
   - `noAuthHeaderPatterns` - Exclusion list (Content-Type, x-stainless-*, etc.)
   - `IsAuthRelevant()` - Filter out noise headers
@@ -143,9 +148,21 @@ Lets Claude Code activate a credential mid-session — without editing config or
   - Sensitive field redaction (auto-redacts secrets, tokens, passwords)
   - `Info()`, `Debug()`, `Error()`
 
+## Traffic Capture & Recording
+- `internal/capture/` - Memory-safe HTTP capture: `Engine.CaptureRequest/CaptureResponse/CaptureEntry` clone bodies via `TeeReader` (always restoring the stream for downstream) and cap them at `maxBodySize`; streaming bodies capture metadata only. Recorders consume the captured types — they never touch live `http.Request`/`Response` bodies.
+- `internal/recorder/har.go` - HAR (HTTP Archive) recorder
+- `internal/recorder/jsonl.go` - JSONL (one transaction per line) recorder
+- `internal/recorder/multi.go` - Fan-out recorder that drives several recorders from one capture
+
+## Run Mode (child-process spawning)
+- `internal/run/process.go` - `SpawnChild()`, `BuildProcessEnvironment()`, `ProcessResult.Wait` — start the child with proxy env vars and propagate its exit code
+- `internal/run/env.go` - Builds the proxy environment (HTTP(S)_PROXY, CA path, placeholder/proxy secret) handed to the child
+- `internal/run/banner.go` - Startup banner shown when launching a child
+
 ## Utilities
 - `internal/shutdown/shutdown.go` - Graceful shutdown manager (register callbacks)
-- `internal/recorder/har.go` - HAR (HTTP Archive) recording
+- `internal/defaults/` - Built-in default services and the env-var knobs that tune them
+- `internal/util/proxy_url.go` - Proxy URL construction/parsing shared across modes
 - `internal/errors/errors.go` - Common error types
 
 ## Tests
@@ -188,10 +205,10 @@ Lets Claude Code activate a credential mid-session — without editing config or
 - Replaces value while preserving client's capitalization
 
 ### Examine Mode Flow
-1. Client → CONNECT → `examineConnectHandler` → **always MITM** (no filtering)
-2. `examineRequestHandler` → log request (headers, optional: params, cookies, body)
+1. Client → CONNECT → `examine.ConnectHandler` → **always MITM** (no filtering)
+2. `examine.RequestHandler` → log request (headers, optional: params, cookies, body)
 3. Request sent to upstream (unmodified)
-4. `examineResponseHandler` → log response (status, headers, optional: cookies, body)
+4. `examine.ResponseHandler` → log response (status, headers, optional: cookies, body)
 5. Response → Client
 
 ## Config File Format (chaperone.toml)
@@ -262,10 +279,13 @@ chaperone check -c custom.toml      # Check with specific config
 
 ### Dependencies
 - `elazarl/goproxy` - MITM proxy foundation
+- `modelcontextprotocol/go-sdk` - MCP server/protocol (`chaperone mcp` grant tools)
 - `spf13/cobra` - CLI framework
 - `BurntSushi/toml` - Configuration parsing
 - `google/uuid` - Request ID generation
 - `stretchr/testify` - Testing assertions
+
+Go version: see `go.mod` (currently `go 1.25.4`).
 
 ### Key Architectural Patterns
 
@@ -311,7 +331,7 @@ The codebase is organized by responsibility, not by layer:
 
 | Package | Responsibility |
 |---------|-----------------|
-| `cmd/chaperone/cmd/` | CLI commands (inject, examine, check, init, mcp) |
+| `cmd/chaperone/cmd/` | CLI commands (inject, run, examine, check, mcp) |
 | `internal/proxy/` | Core proxy server and request handlers |
 | `internal/auth/` | Authentication strategies (bearer, custom header) |
 | `internal/secrets/` | Secret providers (env, file, keychain) |
@@ -326,7 +346,11 @@ The codebase is organized by responsibility, not by layer:
 | `internal/examine/` | Auth discovery mode (passthrough logging) |
 | `internal/init/` | Config wizard with auto-detection |
 | `internal/log/` | Structured logging with redaction |
-| `internal/recorder/` | HAR (HTTP Archive) recording |
+| `internal/recorder/` | Traffic recording (HAR, JSONL, multi fan-out) |
+| `internal/capture/` | Memory-safe HTTP request/response body capture for recording |
+| `internal/run/` | Run mode: spawn child process with injected proxy environment |
+| `internal/defaults/` | Built-in default services + env-var tuning |
+| `internal/util/` | Shared proxy-URL helpers |
 | `internal/shutdown/` | Graceful shutdown management |
 | `internal/errors/` | Custom error types |
 
@@ -339,16 +363,17 @@ HTTP headers are case-insensitive but Go canonicalizes them. When injecting auth
 - Replaces value while preserving client's capitalization
 - Logs WARNING if header already exists
 
-### Policy Enforcement Pipeline (`internal/proxy/handlers.go`)
+### Policy Enforcement Pipeline (handlers split across `internal/proxy/*_handler.go`)
 
 Requests flow through handlers in order:
-1. `connectHandler` - Decide MITM vs transparent tunnel
-2. `policyHandler` - Check methods/paths/body size (fail fast)
-3. `authHandler` - Fetch secret, inject credential
-4. `recordRequestHandler` - HAR recording (if enabled)
-5. Forward to upstream
-6. `recordResponseHandler` - HAR response capture
-7. Return to client
+1. `connectHandler` (`connect_handler.go`) - Decide MITM vs transparent tunnel
+2. `policyHandler` (`policy_handler.go`) - Check methods/paths/body size (fail fast); `dropHandler`/`stripHandler` apply drop/strip policy
+3. `securityStripAuthHandler` (`auth_handler.go`) - Strip client-supplied auth so it can't leak past the proxy
+4. `authHandler` (`auth_handler.go`) - Fetch secret, inject credential
+5. `recordRequestHandler` (`recording_handler.go`) - Recording (if enabled)
+6. Forward to upstream
+7. `recordResponseHandler` - Response capture
+8. Return to client
 
 **Why fail-fast?** Policy rejection happens before credential injection for security.
 
