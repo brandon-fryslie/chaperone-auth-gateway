@@ -110,10 +110,8 @@ func Setup(ctx context.Context, cfg SetupConfig, ca *mitm.CA, logger *slog.Logge
 	secretRegistry := secrets.NewRegistry()
 	authRegistry := auth.NewRegistry()
 
-	// Register built-in secret providers
-	secretRegistry.Register("env", secrets.NewEnvProvider())
-	secretRegistry.Register("file", secrets.NewFileProvider())
-	secretRegistry.Register("keychain", secrets.NewKeychainProvider())
+	// Register built-in secret providers from their single canonical source.
+	secrets.RegisterBuiltins(secretRegistry)
 
 	// Preload secrets at startup to avoid expensive lookups during request handling
 	if len(credentialRefs) > 0 {

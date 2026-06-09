@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/bmf/chaperone/internal/secrets"
 )
 
 // Config represents the complete application configuration.
@@ -153,12 +155,12 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// credentialRefSchemes are the accepted "provider:" prefixes for a credential_ref.
-// A credential_ref is always a POINTER to a secret, never a secret value.
-var credentialRefSchemes = []string{"env:", "file:", "keychain:"}
-
 // validate checks a single grantable pairing's fields. index identifies it in
 // error messages since pairings are an ordered list with no names.
+//
+// The credential_ref scheme is validated against secrets.IsKnownScheme — the
+// single source of truth for which providers exist — so this validator can never
+// drift from the set the registry actually registers ([LAW:one-source-of-truth]).
 func (g *GrantableConfig) validate(index int) error {
 	if strings.TrimSpace(g.HostPattern) == "" {
 		return fmt.Errorf("grantable[%d]: host_pattern is required", index)
@@ -169,23 +171,14 @@ func (g *GrantableConfig) validate(index int) error {
 	if strings.TrimSpace(g.CredentialRef) == "" {
 		return fmt.Errorf("grantable[%d]: credential_ref is required", index)
 	}
-	if !hasCredentialScheme(g.CredentialRef) {
-		return fmt.Errorf("grantable[%d]: credential_ref %q must point to a secret via a known scheme (%s)",
-			index, g.CredentialRef, strings.Join(credentialRefSchemes, ", "))
+	if !secrets.IsKnownScheme(g.CredentialRef) {
+		return fmt.Errorf("grantable[%d]: credential_ref %q must point to a secret via a known provider scheme",
+			index, g.CredentialRef)
 	}
 	if g.MaxBodyBytes < 0 {
 		return fmt.Errorf("grantable[%d]: max_body_bytes must not be negative (got %d)", index, g.MaxBodyBytes)
 	}
 	return nil
-}
-
-func hasCredentialScheme(ref string) bool {
-	for _, scheme := range credentialRefSchemes {
-		if strings.HasPrefix(ref, scheme) {
-			return true
-		}
-	}
-	return false
 }
 
 // SetDefaults applies default values to missing fields.
