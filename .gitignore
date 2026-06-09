@@ -1,5 +1,6 @@
 dist/
 bin/
+/chaperone
 .beands/
 .beads/
 .idea/
