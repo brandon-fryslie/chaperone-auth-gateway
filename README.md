@@ -263,6 +263,49 @@ curl -X POST https://api.openai.com/v1/chat/completions \
   -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
+## Dynamic Credential Grants (MCP)
+
+Claude Code can activate a credential mid-session — without editing config or
+restarting — by *granting* a pre-approved `(credential ↔ host)` pairing at the
+moment of need. The secret value never enters the model's context: only a
+*pointer* (`env:`/`file:`/`keychain:`) crosses the boundary, and the running
+daemon resolves and injects the credential itself.
+
+**1. Declare the grantable universe** (the human-owned set of pairings Claude may
+activate). The daemon auto-starts its control plane whenever this is non-empty:
+
+```toml
+[[grantable]]
+credential_ref = "env:OPENAI_API_KEY"   # a POINTER, never a secret value
+host_pattern   = "api.openai.com"
+auth_strategy  = "bearer"
+allowed_paths  = ["/v1/*"]               # the WIDEST scope a grant may request
+```
+
+**2. Run the daemon** so the control socket comes up at
+`~/.config/chaperone/control.sock`:
+
+```bash
+chaperone inject -c chaperone.toml
+```
+
+**3. Register the MCP server with Claude Code** (`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "chaperone": { "command": "chaperone", "args": ["mcp"] }
+  }
+}
+```
+
+Claude then has four tools — `chaperone_list_grantable` (discover the universe
+and each pairing's widest scope), `chaperone_grant` (activate a pairing, narrowing
+methods/paths within its bound), `chaperone_revoke`, and `chaperone_list`. A grant
+for an unapproved pairing, or a scope wider than the bound, is rejected by the
+daemon and the message is surfaced verbatim so Claude can narrow and retry. If no
+daemon is running, tool calls fail loudly.
+
 ## Configuration
 
 ### Complete Example
