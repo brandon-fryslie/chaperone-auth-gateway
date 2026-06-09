@@ -138,3 +138,91 @@ func TestRegistryBasicOperations(t *testing.T) {
 		assert.Len(t, services, 2)
 	})
 }
+
+// TestRegistryRuntimeMutation tests the Upsert/Unregister seam that the control
+// plane uses to apply and revoke runtime grants. Register stays strict; Upsert
+// is add-or-replace; Unregister removes by exact host pattern.
+func TestRegistryRuntimeMutation(t *testing.T) {
+	t.Parallel()
+
+	newSvc := func(host, ref string) *service.Service {
+		return &service.Service{
+			HostPattern:     host,
+			AuthStrategyRef: "bearer",
+			CredentialRef:   ref,
+		}
+	}
+
+	t.Run("register_then_unregister_removes_eligibility", func(t *testing.T) {
+		registry := service.NewRegistry()
+
+		require.NoError(t, registry.Register(newSvc("api.example.com", "env:KEY1")))
+
+		_, err := registry.Lookup("api.example.com")
+		require.NoError(t, err, "service should be eligible after register")
+
+		require.NoError(t, registry.Unregister("api.example.com"))
+
+		_, err = registry.Lookup("api.example.com")
+		assert.Error(t, err, "service should not be eligible after unregister")
+		assert.Empty(t, registry.ListAll())
+	})
+
+	t.Run("upsert_adds_when_absent", func(t *testing.T) {
+		registry := service.NewRegistry()
+
+		require.NoError(t, registry.Upsert(newSvc("api.example.com", "env:KEY1")))
+
+		found, err := registry.Lookup("api.example.com")
+		require.NoError(t, err)
+		assert.Equal(t, "env:KEY1", found.CredentialRef)
+	})
+
+	t.Run("upsert_regrants_existing_host_without_error", func(t *testing.T) {
+		registry := service.NewRegistry()
+
+		require.NoError(t, registry.Register(newSvc("api.example.com", "env:KEY1")))
+
+		// A runtime regrant of the same host must succeed and replace the value,
+		// unlike Register which would reject the duplicate.
+		require.NoError(t, registry.Upsert(newSvc("api.example.com", "env:KEY2")))
+
+		found, err := registry.Lookup("api.example.com")
+		require.NoError(t, err)
+		assert.Equal(t, "env:KEY2", found.CredentialRef, "upsert should replace the existing service")
+		assert.Len(t, registry.ListAll(), 1, "regrant must not create a second entry")
+	})
+
+	t.Run("register_still_rejects_config_duplicate", func(t *testing.T) {
+		registry := service.NewRegistry()
+
+		require.NoError(t, registry.Register(newSvc("api.example.com", "env:KEY1")))
+
+		err := registry.Register(newSvc("api.example.com", "env:KEY2"))
+		require.Error(t, err, "Register must remain a hard error on duplicate host")
+		assert.Contains(t, err.Error(), "already registered")
+	})
+
+	t.Run("unregister_absent_host_errors", func(t *testing.T) {
+		registry := service.NewRegistry()
+
+		err := registry.Unregister("nonexistent.example.com")
+		require.Error(t, err, "revoking a host that was never granted must fail loudly")
+		assert.Contains(t, err.Error(), "no service registered")
+	})
+
+	t.Run("unregister_matches_register_normalization", func(t *testing.T) {
+		registry := service.NewRegistry()
+
+		require.NoError(t, registry.Register(newSvc("API.Example.Com", "env:KEY1")))
+
+		// Stored under the normalized key; a differently-cased pattern removes it.
+		require.NoError(t, registry.Unregister("api.example.com"))
+		assert.Empty(t, registry.ListAll())
+	})
+
+	t.Run("upsert_nil_errors", func(t *testing.T) {
+		registry := service.NewRegistry()
+		assert.Error(t, registry.Upsert(nil))
+	})
+}
