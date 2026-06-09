@@ -258,8 +258,8 @@ func runExamine(cmd *cobra.Command, args []string) error {
 
 		// Create symlink at /tmp/chaperone-examine.latest.log for easy access
 		symlinkPath := "/tmp/chaperone-examine.latest.log"
-		// Remove old symlink if it exists (ignore errors)
-		os.Remove(symlinkPath)
+		// Remove old symlink if it exists (absence is fine — this is a convenience link)
+		_ = os.Remove(symlinkPath)
 		// Create new symlink
 		if err := os.Symlink(logPath, symlinkPath); err != nil {
 			// Warn but don't fail - this is a convenience feature
@@ -385,7 +385,7 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		if err == nil {
 			reader := bufio.NewReader(tty)
 			_, _ = reader.ReadByte()
-			tty.Close()
+			_ = tty.Close()
 		} else {
 			// Fallback: just wait a moment if /dev/tty not available
 			time.Sleep(2 * time.Second)
@@ -464,7 +464,9 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		// Spawn child process
 		childProcess, err := run.SpawnChild(ctx, processCfg)
 		if err != nil {
-			shutdownMgr.Shutdown(5 * time.Second)
+			if shutErr := shutdownMgr.Shutdown(5 * time.Second); shutErr != nil {
+				log.Error(ctx, "proxy shutdown failed during spawn-error cleanup", shutErr)
+			}
 			return err
 		}
 
@@ -477,10 +479,14 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		case <-sentinelChan:
 			// Sentinel was triggered - print complete config
 			log.Info(ctx, "stopping proxy server")
-			shutdownMgr.Shutdown(10 * time.Second)
+			if shutErr := shutdownMgr.Shutdown(10 * time.Second); shutErr != nil {
+				log.Error(ctx, "proxy shutdown failed", shutErr)
+			}
 			if logFile != nil {
 				log.Info(ctx, "closing temporary log file", "path", logPath)
-				logFile.Close()
+				if closeErr := logFile.Close(); closeErr != nil {
+					log.Error(ctx, "failed to close temporary log file", closeErr, "path", logPath)
+				}
 			}
 
 			// Print complete config to stdout
@@ -490,11 +496,15 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		default:
 			// Child exited normally (sentinel wasn't triggered)
 			log.Info(ctx, "stopping proxy server")
-			shutdownMgr.Shutdown(10 * time.Second)
+			if shutErr := shutdownMgr.Shutdown(10 * time.Second); shutErr != nil {
+				log.Error(ctx, "proxy shutdown failed", shutErr)
+			}
 
 			if logFile != nil {
 				log.Info(ctx, "closing temporary log file", "path", logPath)
-				logFile.Close()
+				if closeErr := logFile.Close(); closeErr != nil {
+					log.Error(ctx, "failed to close temporary log file", closeErr, "path", logPath)
+				}
 			}
 
 			os.Exit(exitCode)

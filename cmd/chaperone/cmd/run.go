@@ -73,9 +73,7 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		cliCommand = args[2:]
 	} else if len(args) > 1 {
 		// Invalid syntax: arguments without '--' separator
-		return fmt.Errorf("invalid syntax: extra arguments must be preceded by '--' separator\n" +
-			"Usage: chaperone run <service> -- <command> <arg1> ...",
-		)
+		return fmt.Errorf("invalid syntax: extra arguments must be preceded by '--' separator (usage: chaperone run <service> -- <command> <arg1> ...)")
 	}
 
 	// Load and merge configs (user + project)
@@ -183,7 +181,9 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	// Spawn child process
 	childProcess, err := run.SpawnChild(ctx, processCfg)
 	if err != nil {
-		shutdownMgr.Shutdown(5 * time.Second)
+		if shutErr := shutdownMgr.Shutdown(5 * time.Second); shutErr != nil {
+			log.Error(ctx, "proxy shutdown failed during spawn-error cleanup", shutErr)
+		}
 		return err
 	}
 
@@ -191,7 +191,9 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	exitCode := childProcess.Wait(ctx)
 
 	// Cleanup proxy and exit with child's exit code
-	shutdownMgr.Shutdown(5 * time.Second)
+	if shutErr := shutdownMgr.Shutdown(5 * time.Second); shutErr != nil {
+		log.Error(ctx, "proxy shutdown failed", shutErr)
+	}
 	os.Exit(exitCode)
 	return nil // Never reached
 }

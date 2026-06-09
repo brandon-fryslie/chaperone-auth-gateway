@@ -76,19 +76,17 @@ func securityStripAuthHandler(registry service.ServiceRegistry, auditLogger audi
 			}
 
 			// AUDIT: Auth header stripped event
-			if auditLogger != nil {
-				auditLogger.Log(audit.Entry{
-					Event:     audit.EventAuthHeaderStripped,
-					Service:   svc.Name,
-					Host:      r.Host,
-					Path:      r.URL.Path,
-					Method:    r.Method,
-					RequestID: log.RequestID(reqCtx),
-					ClientIP:  extractClientIP(r),
-					Outcome:   "success",
-					Detail:    fmt.Sprintf("stripped headers: %s", strings.Join(strippedHeaders, ", ")),
-				})
-			}
+			logAudit(reqCtx, auditLogger, audit.Entry{
+				Event:     audit.EventAuthHeaderStripped,
+				Service:   svc.Name,
+				Host:      r.Host,
+				Path:      r.URL.Path,
+				Method:    r.Method,
+				RequestID: log.RequestID(reqCtx),
+				ClientIP:  extractClientIP(r),
+				Outcome:   "success",
+				Detail:    fmt.Sprintf("stripped headers: %s", strings.Join(strippedHeaders, ", ")),
+			})
 		}
 
 		return r, nil
@@ -138,19 +136,17 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 					"expected_prefix", svc.Placeholder[:min(8, len(svc.Placeholder))]+"...")
 
 				// AUDIT: Placeholder mismatch event
-				if auditLogger != nil {
-					auditLogger.Log(audit.Entry{
-						Event:     audit.EventPlaceholderMismatch,
-						Service:   svc.Name,
-						Host:      r.Host,
-						Path:      r.URL.Path,
-						Method:    r.Method,
-						RequestID: log.RequestID(reqCtx),
-						ClientIP:  extractClientIP(r),
-						Outcome:   "pass_through",
-						Detail:    "placeholder mismatch",
-					})
-				}
+				logAudit(reqCtx, auditLogger, audit.Entry{
+					Event:     audit.EventPlaceholderMismatch,
+					Service:   svc.Name,
+					Host:      r.Host,
+					Path:      r.URL.Path,
+					Method:    r.Method,
+					RequestID: log.RequestID(reqCtx),
+					ClientIP:  extractClientIP(r),
+					Outcome:   "pass_through",
+					Detail:    "placeholder mismatch",
+				})
 
 				return r, nil
 			}
@@ -175,21 +171,19 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 				"ref", svc.CredentialRef)
 
 			// AUDIT: Auth failure event
-			if auditLogger != nil {
-				auditLogger.Log(audit.Entry{
-					Event:        audit.EventAuthFailure,
-					Service:      svc.Name,
-					Host:         r.Host,
-					Path:         r.URL.Path,
-					Method:       r.Method,
-					AuthStrategy: svc.AuthStrategyRef,
-					RequestID:    log.RequestID(reqCtx),
-					ClientIP:     extractClientIP(r),
-					Outcome:      "failure",
-					StatusCode:   http.StatusServiceUnavailable,
-					ErrorMessage: fmt.Sprintf("secret fetch failed: %v", err),
-				})
-			}
+			logAudit(reqCtx, auditLogger, audit.Entry{
+				Event:        audit.EventAuthFailure,
+				Service:      svc.Name,
+				Host:         r.Host,
+				Path:         r.URL.Path,
+				Method:       r.Method,
+				AuthStrategy: svc.AuthStrategyRef,
+				RequestID:    log.RequestID(reqCtx),
+				ClientIP:     extractClientIP(r),
+				Outcome:      "failure",
+				StatusCode:   http.StatusServiceUnavailable,
+				ErrorMessage: fmt.Sprintf("secret fetch failed: %v", err),
+			})
 
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
 				http.StatusServiceUnavailable, "Secret unavailable")
@@ -203,21 +197,19 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 				"strategy", svc.AuthStrategyRef)
 
 			// AUDIT: Auth failure event
-			if auditLogger != nil {
-				auditLogger.Log(audit.Entry{
-					Event:        audit.EventAuthFailure,
-					Service:      svc.Name,
-					Host:         r.Host,
-					Path:         r.URL.Path,
-					Method:       r.Method,
-					AuthStrategy: svc.AuthStrategyRef,
-					RequestID:    log.RequestID(reqCtx),
-					ClientIP:     extractClientIP(r),
-					Outcome:      "failure",
-					StatusCode:   http.StatusBadGateway,
-					ErrorMessage: fmt.Sprintf("unknown auth strategy: %v", err),
-				})
-			}
+			logAudit(reqCtx, auditLogger, audit.Entry{
+				Event:        audit.EventAuthFailure,
+				Service:      svc.Name,
+				Host:         r.Host,
+				Path:         r.URL.Path,
+				Method:       r.Method,
+				AuthStrategy: svc.AuthStrategyRef,
+				RequestID:    log.RequestID(reqCtx),
+				ClientIP:     extractClientIP(r),
+				Outcome:      "failure",
+				StatusCode:   http.StatusBadGateway,
+				ErrorMessage: fmt.Sprintf("unknown auth strategy: %v", err),
+			})
 
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
 				http.StatusBadGateway, "Authentication configuration error")
@@ -230,30 +222,8 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 				"strategy", svc.AuthStrategyRef)
 
 			// AUDIT: Auth failure event
-			if auditLogger != nil {
-				auditLogger.Log(audit.Entry{
-					Event:        audit.EventAuthFailure,
-					Service:      svc.Name,
-					Host:         r.Host,
-					Path:         r.URL.Path,
-					Method:       r.Method,
-					AuthStrategy: svc.AuthStrategyRef,
-					RequestID:    log.RequestID(reqCtx),
-					ClientIP:     extractClientIP(r),
-					Outcome:      "failure",
-					StatusCode:   http.StatusBadGateway,
-					ErrorMessage: fmt.Sprintf("auth strategy apply failed: %v", err),
-				})
-			}
-
-			return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
-				http.StatusBadGateway, "Authentication failed")
-		}
-
-		// AUDIT LOGGING - after successful injection
-		if auditLogger != nil {
-			auditLogger.Log(audit.Entry{
-				Event:        audit.EventCredentialInjected,
+			logAudit(reqCtx, auditLogger, audit.Entry{
+				Event:        audit.EventAuthFailure,
 				Service:      svc.Name,
 				Host:         r.Host,
 				Path:         r.URL.Path,
@@ -261,9 +231,27 @@ func authHandler(registry service.ServiceRegistry, secretRegistry *secrets.Regis
 				AuthStrategy: svc.AuthStrategyRef,
 				RequestID:    log.RequestID(reqCtx),
 				ClientIP:     extractClientIP(r),
-				Outcome:      "success",
+				Outcome:      "failure",
+				StatusCode:   http.StatusBadGateway,
+				ErrorMessage: fmt.Sprintf("auth strategy apply failed: %v", err),
 			})
+
+			return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
+				http.StatusBadGateway, "Authentication failed")
 		}
+
+		// AUDIT LOGGING - after successful injection
+		logAudit(reqCtx, auditLogger, audit.Entry{
+			Event:        audit.EventCredentialInjected,
+			Service:      svc.Name,
+			Host:         r.Host,
+			Path:         r.URL.Path,
+			Method:       r.Method,
+			AuthStrategy: svc.AuthStrategyRef,
+			RequestID:    log.RequestID(reqCtx),
+			ClientIP:     extractClientIP(r),
+			Outcome:      "success",
+		})
 
 		// Build log args - include stripped headers if any
 		logArgs := []any{

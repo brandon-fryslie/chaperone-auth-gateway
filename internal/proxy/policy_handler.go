@@ -34,20 +34,18 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 			}
 
 			// AUDIT: Policy denied event
-			if auditLogger != nil {
-				auditLogger.Log(audit.Entry{
-					Event:      audit.EventPolicyDenied,
-					Service:    svc.Name,
-					Host:       r.Host,
-					Path:       r.URL.Path,
-					Method:     r.Method,
-					RequestID:  log.RequestID(reqCtx),
-					ClientIP:   extractClientIP(r),
-					Outcome:    "blocked",
-					StatusCode: statusCode,
-					Detail:     fmt.Sprintf("method %s not allowed", r.Method),
-				})
-			}
+			logAudit(reqCtx, auditLogger, audit.Entry{
+				Event:      audit.EventPolicyDenied,
+				Service:    svc.Name,
+				Host:       r.Host,
+				Path:       r.URL.Path,
+				Method:     r.Method,
+				RequestID:  log.RequestID(reqCtx),
+				ClientIP:   extractClientIP(r),
+				Outcome:    "blocked",
+				StatusCode: statusCode,
+				Detail:     fmt.Sprintf("method %s not allowed", r.Method),
+			})
 
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText, statusCode, err.Error())
 		}
@@ -57,20 +55,18 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 			logger.Warn("policy violation - path not allowed", "error", err, "hostname", r.Host, "path", r.URL.Path)
 
 			// AUDIT: Policy denied event
-			if auditLogger != nil {
-				auditLogger.Log(audit.Entry{
-					Event:      audit.EventPolicyDenied,
-					Service:    svc.Name,
-					Host:       r.Host,
-					Path:       r.URL.Path,
-					Method:     r.Method,
-					RequestID:  log.RequestID(reqCtx),
-					ClientIP:   extractClientIP(r),
-					Outcome:    "blocked",
-					StatusCode: http.StatusForbidden,
-					Detail:     fmt.Sprintf("path %s not allowed", r.URL.Path),
-				})
-			}
+			logAudit(reqCtx, auditLogger, audit.Entry{
+				Event:      audit.EventPolicyDenied,
+				Service:    svc.Name,
+				Host:       r.Host,
+				Path:       r.URL.Path,
+				Method:     r.Method,
+				RequestID:  log.RequestID(reqCtx),
+				ClientIP:   extractClientIP(r),
+				Outcome:    "blocked",
+				StatusCode: http.StatusForbidden,
+				Detail:     fmt.Sprintf("path %s not allowed", r.URL.Path),
+			})
 
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText, http.StatusForbidden, err.Error())
 		}
@@ -80,20 +76,18 @@ func policyHandler(registry service.ServiceRegistry, enforcer *service.Enforcer,
 			logger.Warn("policy violation - body too large", "error", err, "hostname", r.Host)
 
 			// AUDIT: Policy denied event
-			if auditLogger != nil {
-				auditLogger.Log(audit.Entry{
-					Event:      audit.EventPolicyDenied,
-					Service:    svc.Name,
-					Host:       r.Host,
-					Path:       r.URL.Path,
-					Method:     r.Method,
-					RequestID:  log.RequestID(reqCtx),
-					ClientIP:   extractClientIP(r),
-					Outcome:    "blocked",
-					StatusCode: http.StatusRequestEntityTooLarge,
-					Detail:     fmt.Sprintf("body size %d exceeds limit", r.ContentLength),
-				})
-			}
+			logAudit(reqCtx, auditLogger, audit.Entry{
+				Event:      audit.EventPolicyDenied,
+				Service:    svc.Name,
+				Host:       r.Host,
+				Path:       r.URL.Path,
+				Method:     r.Method,
+				RequestID:  log.RequestID(reqCtx),
+				ClientIP:   extractClientIP(r),
+				Outcome:    "blocked",
+				StatusCode: http.StatusRequestEntityTooLarge,
+				Detail:     fmt.Sprintf("body size %d exceeds limit", r.ContentLength),
+			})
 
 			return r, goproxy.NewResponse(r, goproxy.ContentTypeText, http.StatusRequestEntityTooLarge, err.Error())
 		}
@@ -129,20 +123,18 @@ func dropHandler(registry service.ServiceRegistry, auditLogger audit.AuditLogger
 					"path", r.URL.Path)
 
 				// AUDIT: Request dropped event
-				if auditLogger != nil {
-					auditLogger.Log(audit.Entry{
-						Event:      audit.EventRequestDropped,
-						Service:    svc.Name,
-						Host:       r.Host,
-						Path:       r.URL.Path,
-						Method:     r.Method,
-						RequestID:  log.RequestID(reqCtx),
-						ClientIP:   extractClientIP(r),
-						Outcome:    "blocked",
-						StatusCode: http.StatusForbidden,
-						Detail:     fmt.Sprintf("matched drop pattern: %s", pattern),
-					})
-				}
+				logAudit(reqCtx, auditLogger, audit.Entry{
+					Event:      audit.EventRequestDropped,
+					Service:    svc.Name,
+					Host:       r.Host,
+					Path:       r.URL.Path,
+					Method:     r.Method,
+					RequestID:  log.RequestID(reqCtx),
+					ClientIP:   extractClientIP(r),
+					Outcome:    "blocked",
+					StatusCode: http.StatusForbidden,
+					Detail:     fmt.Sprintf("matched drop pattern: %s", pattern),
+				})
 
 				return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
 					http.StatusForbidden, "Request blocked by drop policy")

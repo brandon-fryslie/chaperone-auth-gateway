@@ -120,7 +120,7 @@ func (l *Logger) LogRequest(r *http.Request) bool {
 
 		// Read ENTIRE body (not limited) to ensure proper restoration
 		body, err := io.ReadAll(teeReader)
-		r.Body.Close()
+		_ = r.Body.Close()
 
 		if err != nil {
 			args = append(args, "body_error", err.Error())
@@ -261,7 +261,7 @@ func (l *Logger) LogResponse(resp *http.Response) {
 
 		// Read ENTIRE body (not limited) to ensure proper restoration
 		body, err := io.ReadAll(teeReader)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if err != nil {
 			args = append(args, "body_error", err.Error())

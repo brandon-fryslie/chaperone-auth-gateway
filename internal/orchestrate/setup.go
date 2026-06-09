@@ -53,11 +53,10 @@ func Setup(ctx context.Context, cfg SetupConfig, ca *mitm.CA, logger *slog.Logge
 		// 1. Combined format (recommended): auth_strategy = "header:x-api-key"
 		// 2. Separate fields format: auth_strategy = "header", header_name = "x-api-key"
 		authStrategyRef := svcCfg.AuthStrategy
-		headerName := svcCfg.HeaderName
 
 		if strings.HasPrefix(svcCfg.AuthStrategy, "header:") {
 			// Combined format: auth_strategy = "header:x-api-key"
-			headerName = svcCfg.AuthStrategy[7:] // Extract "x-api-key" from "header:x-api-key"
+			headerName := svcCfg.AuthStrategy[7:] // Extract "x-api-key" from "header:x-api-key"
 			authStrategyRef = svcCfg.AuthStrategy
 			headerStrategies[headerName] = true
 		} else if svcCfg.AuthStrategy == "header" && svcCfg.HeaderName != "" {

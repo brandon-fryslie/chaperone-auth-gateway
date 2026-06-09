@@ -17,9 +17,12 @@ import (
 
 // CertCache manages dynamic certificate generation and caching.
 type CertCache struct {
-	ca         *CA
-	cache      sync.Map // map[string]*tls.Certificate
-	generating sync.Map // map[string]chan struct{} - for coordinating concurrent generation
+	ca *CA
+	// mu guards both cache and generating, so "is it cached / is someone
+	// already generating / claim the generator slot" is one atomic decision.
+	mu         sync.Mutex
+	cache      map[string]*tls.Certificate
+	generating map[string]chan struct{} // single-flight coordination per hostname
 	serialMu   sync.Mutex
 	serialNext int64
 	logger     *slog.Logger
@@ -29,6 +32,8 @@ type CertCache struct {
 func NewCertCache(ca *CA, logger *slog.Logger) *CertCache {
 	return &CertCache{
 		ca:         ca,
+		cache:      make(map[string]*tls.Certificate),
+		generating: make(map[string]chan struct{}),
 		serialNext: 1,
 		logger:     logger,
 	}
@@ -45,48 +50,51 @@ func (c *CertCache) GetCertificate(hostname string) (*tls.Certificate, error) {
 	}
 	host = strings.ToLower(host)
 
-	// Check cache
-	if cached, ok := c.cache.Load(host); ok {
+	c.mu.Lock()
+	if cert, ok := c.cache[host]; ok {
+		c.mu.Unlock()
 		if c.logger != nil {
 			c.logger.Debug("using cached certificate", "hostname", host)
 		}
-		return cached.(*tls.Certificate), nil
+		return cert, nil
 	}
 
-	// Try to atomically mark this hostname as being generated
-	// If another goroutine is already generating, wait for it
-	ch := make(chan struct{})
-	actual, loaded := c.generating.LoadOrStore(host, ch)
-	if loaded {
-		// Another goroutine is generating, wait for it
-		<-actual.(chan struct{})
-		// Now it should be in cache
-		if cached, ok := c.cache.Load(host); ok {
-			return cached.(*tls.Certificate), nil
+	// Another goroutine is already generating this hostname: wait for it,
+	// then read the result it stored.
+	if ch, generating := c.generating[host]; generating {
+		c.mu.Unlock()
+		<-ch
+		c.mu.Lock()
+		cert, ok := c.cache[host]
+		c.mu.Unlock()
+		if ok {
+			return cert, nil
 		}
-		// Should not happen, but handle it anyway
+		// The generator failed (errored before storing). Retry as a fresh attempt.
 		return c.GetCertificate(hostname)
 	}
 
-	// We're the generator
+	// We hold the lock and there is no cached cert and no generation in
+	// flight, so we claim the generator slot atomically.
+	ch := make(chan struct{})
+	c.generating[host] = ch
+	c.mu.Unlock()
+
 	defer func() {
-		c.generating.Delete(host)
+		c.mu.Lock()
+		delete(c.generating, host)
+		c.mu.Unlock()
 		close(ch)
 	}()
 
-	// Double-check cache (another goroutine might have completed between our first check and LoadOrStore)
-	if cached, ok := c.cache.Load(host); ok {
-		return cached.(*tls.Certificate), nil
-	}
-
-	// Generate new certificate
 	cert, err := c.generateCertificate(host)
 	if err != nil {
 		return nil, err
 	}
 
-	// Store in cache
-	c.cache.Store(host, cert)
+	c.mu.Lock()
+	c.cache[host] = cert
+	c.mu.Unlock()
 	if c.logger != nil {
 		c.logger.Info("generated certificate with CA", "hostname", host)
 	}
