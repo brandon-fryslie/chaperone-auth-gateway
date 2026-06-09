@@ -59,7 +59,8 @@ make help               # Show all targets with descriptions
 - `cmd/chaperone/cmd/examine.go` - **Examine mode**: Auth discovery (passthrough MITM logging)
 - `cmd/chaperone/cmd/check.go` - **Check mode**: Security posture assessment
 - `cmd/chaperone/cmd/init.go` - **Init mode**: Interactive config wizard with auth detection
-- `cmd/chaperone/cmd/root.go` - Root command, config resolution, CA path helpers
+- `cmd/chaperone/cmd/mcp.go` - **MCP mode**: stdio MCP server for dynamic credential grants (thin client of the daemon's control socket)
+- `cmd/chaperone/cmd/root.go` - Root command, config resolution, CA path helpers (incl. `getControlSocketPath`)
 
 ## Core Proxy Architecture
 - `internal/proxy/server.go` - Server setup, `NewWithMITM()`, `NewExamineProxy()`, start/stop
@@ -112,6 +113,20 @@ make help               # Show all targets with descriptions
   - `NewLogger()` - Create logger (stdout or file with 0600 permissions)
   - `Log()` - Write audit entry as JSON
 
+## Dynamic Credential Grants (MCP)
+Lets Claude Code activate a credential mid-session — without editing config or restarting — by *granting* a pre-approved `(credential ↔ host)` pairing. The secret value never enters the model's context: only a pointer (`env:`/`file:`/`keychain:`) crosses the boundary, and the daemon resolves and injects the credential itself.
+
+- `internal/config/config.go` - `GrantableConfig` — one human-approved `(credential_ref ↔ host_pattern ↔ auth_strategy)` pairing plus the MAXIMAL scope a grant may request. The human-owned source of truth for the grantable universe.
+- `internal/grant/enforcer.go` - `Enforcer` — single authority for *what is grantable*. `Authorize(svc)` accepts a proposed grant iff its identity matches one pairing exactly and its scope NARROWS within that pairing's bound (omitted scope = widest, so a bounded pairing requires the grant to state its scope). Built from `Grantable` config at startup; fails loudly on a malformed universe.
+- `internal/control/` - Daemon control plane over a localhost-only, 0600 unix socket (`~/.config/chaperone/control.sock`). Four ops: grant / revoke / list / list-grantable.
+  - `api.go` - `API` — applies exactly two effects at this one boundary: registry upsert and an audit write. Resolves no secrets, re-decides no policy (delegates wholly to the enforcer).
+  - `server.go` / `client.go` - socket transport; the two share `protocol.go` wire types so they cannot drift. A missing daemon makes every client call fail loudly.
+  - `protocol.go` - `GrantRequest`/`RevokeRequest` and result/view types. The request type omits operator-only policy fields (client_groups/drop/strip) so they are unrepresentable at the boundary.
+- `internal/mcpgrants/server.go` - `NewServer(client ControlClient) *mcp.Server` — stdio MCP server Claude Code spawns. Pure relay: each tool call → one control-API call. Adds vocabulary and delivery only; holds no registry, resolves no secrets. Tool input types ARE the control wire types, so the MCP schema and control contract cannot drift. Enforcer rejections and the no-daemon error come back as `CallToolResult.IsError=true` with the message verbatim — a tool error, not a protocol error.
+- `internal/orchestrate/` - Shared daemon assembly for inject/run modes. `Setup` builds the registries + grant enforcer; `CreateProxy` installs the MITM pipeline whenever static services exist OR the grantable universe is non-empty (a runtime grant can add an injection-eligible host with no restart); `StartControlPlane` brings up the control socket. The proxy + control plane share one service registry, grant enforcer, and audit sink.
+
+**Single enforcer:** the proxy pipeline (match host → fetch secret → enforce policy → inject → audit) stays the ONE authority. A runtime grant only adds an entry to the live registry the proxy already consults; it changes no code path.
+
 ## MITM / TLS
 - `internal/mitm/ca.go` - CA generation/loading (`LoadOrGenerateCA`)
 - `internal/mitm/certcache.go` - Certificate cache (generate certs per hostname)
@@ -156,6 +171,15 @@ make help               # Show all targets with descriptions
 - Get auth strategy from registry (e.g., `bearer`, `header:x-api-key`)
 - Call `strategy.Apply(ctx, request, secret)` → injects header
 - **Logs:** `"injected credential"` with credential_ref, auth_strategy, path, host
+
+### Dynamic Grant Flow (control plane + MCP)
+1. Operator declares the grantable universe in config (`[[grantable]]`); daemon builds the `grant.Enforcer` and auto-starts the control socket when the universe is non-empty.
+2. Claude Code spawns `chaperone mcp` (stdio); it dials the control socket as a `control.Client`.
+3. Agent calls `chaperone_grant` → `control.API.Grant` → `enforcer.Authorize` (identity must match a pairing, scope must narrow within its bound) → on accept, `registry.Upsert(svc)` makes the host injection-eligible at once; on reject, the verbatim message returns as an MCP tool error (`IsError`).
+4. A subsequent proxied request to that host now flows through the normal inject pipeline (above) — same single enforcer, no special path.
+5. `chaperone_revoke` → `registry.Unregister(host)` → the host stops being injected (subsequent requests fall back to transparent tunnel).
+- Every grant/revoke/reject is audited by reference (`grant_applied`/`grant_revoked`/`grant_rejected`); a secret value is never resolved or recorded here.
+- E2E coverage: `test/integration/grant_injection_integration_test.go` proves the four behaviors on real HTTP/TLS (in-scope injected, out-of-scope rejected before injection, off-universe refused, revoke removes injection) plus that no secret crosses the MCP/audit boundary.
 
 ### Header Capitalization Handling (headers_util.go)
 - Client may send `authorization`, `Authorization`, `AUTHORIZATION`
@@ -287,12 +311,16 @@ The codebase is organized by responsibility, not by layer:
 
 | Package | Responsibility |
 |---------|-----------------|
-| `cmd/chaperone/cmd/` | CLI commands (inject, examine, check, init) |
+| `cmd/chaperone/cmd/` | CLI commands (inject, examine, check, init, mcp) |
 | `internal/proxy/` | Core proxy server and request handlers |
 | `internal/auth/` | Authentication strategies (bearer, custom header) |
 | `internal/secrets/` | Secret providers (env, file, keychain) |
 | `internal/service/` | Service registry, policy, host matching |
-| `internal/config/` | Configuration parsing and validation |
+| `internal/config/` | Configuration parsing and validation (incl. `GrantableConfig`) |
+| `internal/grant/` | Grant enforcer — single authority for what is grantable |
+| `internal/control/` | Daemon control plane (grant/revoke/list over unix socket) |
+| `internal/mcpgrants/` | stdio MCP server — agent-facing grant tools (thin control-plane client) |
+| `internal/orchestrate/` | Shared daemon assembly (registries, proxy, control plane) for inject/run |
 | `internal/mitm/` | MITM certificate generation and caching |
 | `internal/audit/` | Security event logging (JSON format) |
 | `internal/examine/` | Auth discovery mode (passthrough logging) |
