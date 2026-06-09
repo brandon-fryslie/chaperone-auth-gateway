@@ -2,12 +2,12 @@ package run
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/bmf/chaperone/internal/config"
+	"github.com/bmf/chaperone/internal/defaults"
 	"github.com/bmf/chaperone/internal/log"
 )
 
@@ -102,34 +102,8 @@ func (eb *EnvBuilder) SetProxyVars(proxyAddress string) *EnvBuilder {
 // Always sets CHAPERONE_CA_CERT regardless of caEnvVars.
 func (eb *EnvBuilder) SetCAEnvVars(caCertPath string, caEnvVars []string) *EnvBuilder {
 	if len(caEnvVars) == 0 {
-		// Default: set all standard CA environment variables for comprehensive coverage
-		caEnvVars = []string{
-			// OpenSSL / LibSSL (used by many tools)
-			"SSL_CERT_FILE",
-
-			// cURL / libcurl
-			"CURL_CA_BUNDLE",
-
-			// Node.js
-			"NODE_EXTRA_CA_CERTS",
-
-			// Python (requests, httpx, others)
-			"REQUESTS_CA_BUNDLE",
-			"HTTPX_CA_BUNDLE",
-
-			// Git
-			"GIT_SSL_CAINFO",
-
-			// Perl (LWP, HTTPS)
-			"PERL_LWP_SSL_CA_FILE",
-			"HTTPS_CA_FILE",
-
-			// AWS CLI
-			"AWS_CA_BUNDLE",
-
-			// Homebrew
-			"HOMEBREW_CERTIFICATE_AUTHORITY",
-		}
+		// Default: use comprehensive CA env vars from defaults package
+		caEnvVars = defaults.CAEnvVars
 	}
 
 	for _, envVar := range caEnvVars {
@@ -181,33 +155,6 @@ func PrepareRunConfig(cfg *config.Config, serviceName string, cliCommand []strin
 	}
 
 	return &svc, nil
-}
-
-// BuildChildEnvironment creates the environment for the child process.
-// Sets proxy vars, loads env file, and sets CA environment variables.
-func BuildChildEnvironment(ctx context.Context, svc *config.ServiceConfig, serviceName, proxyAddress, caCertPath string) ([]string, error) {
-	envBuilder := NewEnvBuilder()
-	envBuilder.InheritParent()
-
-	// Load env_file if specified
-	if svc.Run.EnvFile != "" {
-		log.Info(ctx, "loading env file", "path", svc.Run.EnvFile)
-		if err := envBuilder.LoadEnvFile(svc.Run.EnvFile); err != nil {
-			return nil, fmt.Errorf("failed to load env file: %w", err)
-		}
-	}
-
-	// Set proxy environment variables
-	envBuilder.SetProxyVars(proxyAddress)
-
-	// Set CA environment variables
-	log.Info(ctx, "setting CA environment variables",
-		"ca_cert", caCertPath,
-		"ca_env_vars", svc.Run.CAEnvVars,
-	)
-	envBuilder.SetCAEnvVars(caCertPath, svc.Run.CAEnvVars)
-
-	return envBuilder.Build(), nil
 }
 
 // CreateTempLogFile creates a temporary log file for run mode logging.

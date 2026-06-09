@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -16,15 +15,6 @@ import (
 	"github.com/bmf/chaperone/internal/run"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
-)
-
-// ANSI color codes for run command output
-const (
-	runReset = "\033[0m"
-	runBold  = "\033[1m"
-	runCyan  = "\033[36m"
-	runBlue  = "\033[34m"
-	runGreen = "\033[32m"
 )
 
 // runCmd represents the run command
@@ -169,53 +159,36 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 	// Get the proxy URL with embedded credentials
 	proxyURL := proxyServer.ProxyURL()
 
-	// Build environment for child process
-	childEnv, err := run.BuildChildEnvironment(ctx, svc, serviceName, proxyURL, caCertPath)
+	// Build command line
+	command := []string{svc.Run.Command}
+	command = append(command, svc.Run.Args...)
+
+	// Print startup banner to stderr BEFORE starting child
+	// After this, all chaperone output goes to the log file only
+	run.PrintRunBanner(run.RunBannerConfig{
+		Service: serviceName,
+		Command: formatRunCommand(svc.Run.Command, svc.Run.Args),
+		LogPath: logPath,
+	})
+
+	// Configure process
+	processCfg := run.ProcessConfig{
+		Command:    command,
+		ProxyURL:   proxyURL,
+		CACertPath: caCertPath,
+		CAEnvVars:  svc.Run.CAEnvVars, // Use service-specific CA env vars
+		EnvFile:    svc.Run.EnvFile,   // Load env file if specified
+	}
+
+	// Spawn child process
+	childProcess, err := run.SpawnChild(ctx, processCfg)
 	if err != nil {
 		shutdownMgr.Shutdown(5 * time.Second)
 		return err
 	}
 
-	// Print startup banner to stderr BEFORE starting child
-	// After this, all chaperone output goes to the log file only
-	fmt.Fprintf(os.Stderr, "\n%s=== Chaperone Run Mode ===%s\n\n", runCyan+runBold, runReset)
-	fmt.Fprintf(os.Stderr, "%sService:%s  %s\n", runBlue+runBold, runReset, serviceName)
-	fmt.Fprintf(os.Stderr, "%sCommand:%s  %s\n", runBlue+runBold, runReset, formatRunCommand(svc.Run.Command, svc.Run.Args))
-	fmt.Fprintf(os.Stderr, "%sLog file:%s %s\n\n", runBlue+runBold, runReset, logPath)
-
-	log.Info(ctx, "starting child process",
-		"command", svc.Run.Command,
-		"args", svc.Run.Args,
-	)
-
-	// Create command - DO NOT use ProcessManager to avoid process group isolation
-	// We want the child to receive signals directly from the terminal
-	childCmd := exec.Command(svc.Run.Command, svc.Run.Args...)
-	childCmd.Env = childEnv
-	childCmd.Stdin = os.Stdin
-	childCmd.Stdout = os.Stdout
-	childCmd.Stderr = os.Stderr
-	// No Setpgid - child stays in same process group for proper signal handling
-
-	// Start child process
-	if err := childCmd.Start(); err != nil {
-		shutdownMgr.Shutdown(5 * time.Second)
-		return fmt.Errorf("failed to start child process: %w", err)
-	}
-
-	log.Info(ctx, "child process started successfully", "pid", childCmd.Process.Pid)
-
 	// Wait for child to exit
-	var exitCode int
-	if err := childCmd.Wait(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = 1
-		}
-	}
-
-	log.Info(ctx, "child process exited", "exit_code", exitCode)
+	exitCode := childProcess.Wait(ctx)
 
 	// Cleanup proxy and exit with child's exit code
 	shutdownMgr.Shutdown(5 * time.Second)

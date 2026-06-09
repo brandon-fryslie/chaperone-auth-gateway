@@ -301,7 +301,7 @@ func TestEnvBuilder_Chaining(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load env file: %v", err)
 	}
-	eb.SetProxyVars("http://127.0.0.1:8080", "myservice")
+	eb.SetProxyVars("http://127.0.0.1:8080")
 
 	env := eb.Build()
 	vars := make(map[string]string)
@@ -337,7 +337,7 @@ func TestEnvBuilder_Chaining_WithCAEnvVars(t *testing.T) {
 	// Test that SetCAEnvVars can be chained with other methods
 	eb := NewEnvBuilder()
 	eb.InheritParent()
-	eb.SetProxyVars("http://127.0.0.1:8080", "myservice")
+	eb.SetProxyVars("http://127.0.0.1:8080")
 	eb.SetCAEnvVars("/tmp/ca-cert.pem", nil)
 
 	env := eb.Build()
