@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bmf/chaperone/internal/audit"
 	"github.com/bmf/chaperone/internal/config"
+	"github.com/bmf/chaperone/internal/control"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/proxy"
@@ -83,12 +85,19 @@ func InitializeEphemeralCA(ctx context.Context, pid int, shutdownMgr *shutdown.M
 }
 
 // CreateProxy creates a proxy server based on the setup result.
-// Returns a MITM-enabled proxy if services are configured, otherwise a transparent proxy.
+// It installs the MITM pipeline whenever the daemon could ever need to inject —
+// either static services exist now OR the grantable universe is non-empty (a
+// runtime grant can add an injection-eligible host without a restart). Only a
+// daemon that can never MITM anything falls back to a transparent proxy.
 // If proxySecret is provided, proxy requires authentication.
-func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, result *SetupResult, proxySecret string) *proxy.Server {
+// If auditLogger is non-nil, the proxy writes to it (so the daemon shares one
+// audit trail with the control plane); if nil, the proxy owns its own.
+func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, result *SetupResult, proxySecret string, auditLogger audit.AuditLogger) *proxy.Server {
+	grantsPossible := result.GrantEnforcer != nil && len(result.GrantEnforcer.ListPairings()) > 0
+
 	var proxyServer *proxy.Server
-	if len(result.ServiceRegistry.ListAll()) > 0 {
-		// Use MITM-enabled proxy if services are configured
+	if len(result.ServiceRegistry.ListAll()) > 0 || grantsPossible {
+		// Use MITM-enabled proxy if services are configured or grants are possible
 		// Pass registries via options to enable authentication
 		proxyServer = proxy.NewWithMITM(
 			cfg,
@@ -100,6 +109,7 @@ func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, s
 				SecretRegistry: result.SecretRegistry,
 				AuthRegistry:   result.AuthRegistry,
 				ProxySecret:    proxySecret,
+				AuditLogger:    auditLogger,
 			},
 		)
 		log.Info(ctx, "proxy server created with MITM support and authentication")
@@ -109,6 +119,46 @@ func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, s
 		log.Info(ctx, "proxy server created in transparent mode (no services configured)")
 	}
 	return proxyServer
+}
+
+// CreateAuditLogger creates the daemon's single audit sink from config and
+// registers its Close on shutdown. Audit is a security control, so a creation
+// failure is loud (returned), never silently disabled.
+func CreateAuditLogger(cfg *config.Config, shutdownMgr *shutdown.Manager) (audit.AuditLogger, error) {
+	logger, err := audit.NewLogger(audit.Config{
+		Enabled: cfg.Audit.Enabled,
+		Path:    cfg.Audit.Path,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create audit logger: %w", err)
+	}
+	if shutdownMgr != nil {
+		shutdownMgr.Register(func(context.Context) error { return logger.Close() })
+	}
+	return logger, nil
+}
+
+// StartControlPlane brings up the localhost-only control socket on the running
+// daemon and registers its shutdown. The control API defers all grant decisions
+// to the enforcer and writes grant/revoke events to the shared audit sink.
+func StartControlPlane(ctx context.Context, result *SetupResult, auditLogger audit.AuditLogger, socketPath string, shutdownMgr *shutdown.Manager, logger *slog.Logger) error {
+	api, err := control.NewAPI(result.GrantEnforcer, result.ServiceRegistry, auditLogger, logger)
+	if err != nil {
+		return fmt.Errorf("failed to build control API: %w", err)
+	}
+
+	server, err := control.NewServer(api, socketPath, logger)
+	if err != nil {
+		return fmt.Errorf("failed to build control server: %w", err)
+	}
+
+	if err := server.Start(); err != nil {
+		return fmt.Errorf("failed to start control plane: %w", err)
+	}
+
+	shutdownMgr.Register(server.Stop)
+	log.Info(ctx, "control plane started", "socket", socketPath)
+	return nil
 }
 
 // LogStartup logs the startup configuration.

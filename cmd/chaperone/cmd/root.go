@@ -93,3 +93,14 @@ func getCAPath() (dir, keyPath, certPath string, err error) {
 
 	return dir, keyPath, certPath, nil
 }
+
+// getControlSocketPath returns the well-known unix socket path for the daemon's
+// control plane, so a separately-spawned MCP client can rendezvous with the
+// running daemon. Lives next to the CA under ~/.config/chaperone/.
+func getControlSocketPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+	return filepath.Join(homeDir, ".config", "chaperone", "control.sock"), nil
+}

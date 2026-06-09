@@ -30,7 +30,7 @@ type Server struct {
 	httpServer  *http.Server
 	listener    net.Listener
 	recorder    *recorder.Recorder
-	auditLogger *audit.Logger
+	auditLogger audit.AuditLogger
 	proxySecret string // Per-run secret for proxy authentication
 	mu          sync.Mutex
 	started     bool
@@ -113,6 +113,12 @@ type MITMOptions struct {
 	// ProxySecret is the per-run secret for proxy Basic auth.
 	// If empty, proxy authentication is disabled (INSECURE).
 	ProxySecret string
+
+	// AuditLogger, if provided, is the audit sink the proxy writes to. Injecting it
+	// lets the daemon share ONE audit trail across the proxy and the control plane
+	// ([LAW:one-source-of-truth]); its lifecycle (Close) is owned by the injector.
+	// If nil, the proxy creates and owns its own logger from cfg.Audit.
+	AuditLogger audit.AuditLogger
 }
 
 // NewWithMITM creates a new proxy server with MITM capabilities.
@@ -131,30 +137,35 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		recorder:    recorder.NewRecorder(),
 	}
 
-	// Create audit logger
-	auditLogger, err := audit.NewLogger(audit.Config{
-		Enabled: cfg.Audit.Enabled,
-		Path:    cfg.Audit.Path,
-	})
-	if err != nil {
-		logger.Warn("failed to create audit logger", "error", err)
-		// Create disabled logger as fallback
-		auditLogger = &audit.Logger{}
-	}
-	s.auditLogger = auditLogger
-
-	// Register audit logger cleanup on shutdown
-	if shutdownMgr != nil {
-		shutdownMgr.Register(func(ctx context.Context) error {
-			return auditLogger.Close()
-		})
-	}
-
 	// Get options (if provided)
 	var options *MITMOptions
 	if len(opts) > 0 && opts[0] != nil {
 		options = opts[0]
 	}
+
+	// Audit sink: prefer an injected logger (the daemon shares one trail across
+	// proxy + control plane) and let its injector own Close. Only when none is
+	// provided does the proxy create and own its own from cfg.Audit.
+	var auditLogger audit.AuditLogger
+	if options != nil && options.AuditLogger != nil {
+		auditLogger = options.AuditLogger
+	} else {
+		owned, err := audit.NewLogger(audit.Config{
+			Enabled: cfg.Audit.Enabled,
+			Path:    cfg.Audit.Path,
+		})
+		if err != nil {
+			logger.Warn("failed to create audit logger", "error", err)
+			owned = &audit.Logger{} // disabled fallback
+		}
+		auditLogger = owned
+		if shutdownMgr != nil {
+			shutdownMgr.Register(func(ctx context.Context) error {
+				return owned.Close()
+			})
+		}
+	}
+	s.auditLogger = auditLogger
 
 	// Get secret registry (if provided)
 	var secretRegistry *secrets.Registry

@@ -100,9 +100,16 @@ func runInject(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Create the daemon's single audit sink, shared by the proxy and the control
+	// plane so grant events and injection events land in one trail.
+	auditLogger, err := orchestrate.CreateAuditLogger(cfg, shutdownMgr)
+	if err != nil {
+		return err
+	}
+
 	// Create proxy server with MITM support or transparent mode
 	// Inject mode has no proxy auth - it's for manual use where user sets HTTP_PROXY
-	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, "")
+	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, "", auditLogger)
 
 	// Start proxy server
 	if err := proxyServer.Start(); err != nil {
@@ -110,6 +117,16 @@ func runInject(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info(ctx, "proxy server started successfully")
+
+	// Bring up the localhost-only control plane so grants can be applied/revoked
+	// at runtime without a restart.
+	socketPath, err := getControlSocketPath()
+	if err != nil {
+		return err
+	}
+	if err := orchestrate.StartControlPlane(ctx, result, auditLogger, socketPath, shutdownMgr, slog.Default()); err != nil {
+		return err
+	}
 
 	log.Info(ctx, "waiting for shutdown signal (SIGTERM/SIGINT)")
 

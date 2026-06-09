@@ -18,6 +18,12 @@ const (
 	EventRequestDropped      = "request_dropped"
 	EventAuthHeaderStripped  = "auth_header_stripped"
 	EventPlaceholderMismatch = "placeholder_mismatch"
+
+	// Control-plane grant lifecycle. The reference (credential_ref pointer) and
+	// scope are recorded; a secret value never is.
+	EventGrantApplied  = "grant_applied"
+	EventGrantRevoked  = "grant_revoked"
+	EventGrantRejected = "grant_rejected"
 )
 
 // AuditLogger is the interface for audit logging.
