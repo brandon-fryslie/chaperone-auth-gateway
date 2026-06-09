@@ -8,6 +8,7 @@ import (
 
 	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/config"
+	"github.com/bmf/chaperone/internal/grant"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/secrets"
@@ -28,6 +29,10 @@ type SetupResult struct {
 	SecretRegistry  *secrets.Registry
 	AuthRegistry    *auth.Registry
 	CertCache       *mitm.CertCache
+	// GrantEnforcer is the single authority for what a runtime grant may activate,
+	// built from the human-owned grantable universe. Non-nil even with no grantable
+	// config (an empty universe rejects every grant).
+	GrantEnforcer *grant.Enforcer
 }
 
 // Setup initializes all registries and components based on configuration.
@@ -97,6 +102,24 @@ func Setup(ctx context.Context, cfg SetupConfig, ca *mitm.CA, logger *slog.Logge
 		)
 	}
 
+	// Collect header strategies declared by the grantable universe too, so a
+	// runtime grant against a header pairing has its strategy registered and can
+	// actually inject — not just pass the enforcer and then fail at request time.
+	for i := range cfg.Config.Grantable {
+		g := &cfg.Config.Grantable[i]
+		grantRef := service.CanonicalAuthRef(g.AuthStrategy, g.HeaderName)
+		if headerName, ok := service.HeaderNameFromRef(grantRef); ok {
+			headerStrategies[headerName] = true
+		}
+	}
+
+	// Build the grant enforcer from the human-owned universe. It fails loudly on a
+	// malformed universe (duplicate identity, unsupported bound) at startup.
+	grantEnforcer, err := grant.NewEnforcer(cfg.Config.Grantable)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build grant enforcer: %w", err)
+	}
+
 	// Validate service count if filter was applied
 	if len(cfg.ServiceNames) > 0 && serviceCount == 0 {
 		return nil, fmt.Errorf("no services found matching filter: %v", cfg.ServiceNames)
@@ -151,6 +174,7 @@ func Setup(ctx context.Context, cfg SetupConfig, ca *mitm.CA, logger *slog.Logge
 		SecretRegistry:  secretRegistry,
 		AuthRegistry:    authRegistry,
 		CertCache:       certCache,
+		GrantEnforcer:   grantEnforcer,
 	}, nil
 }
 

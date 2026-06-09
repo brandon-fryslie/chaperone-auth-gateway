@@ -144,8 +144,9 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to generate proxy secret: %w", err)
 	}
 
-	// Create and start proxy server with authentication
-	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, proxySecret)
+	// Create and start proxy server with authentication. Run mode does not expose
+	// a control plane, so the proxy owns its own audit logger (nil = self-owned).
+	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, proxySecret, nil)
 
 	log.Info(ctx, "starting proxy server", "address", cfg.Server.Address)
 	if err := proxyServer.Start(); err != nil {

@@ -81,6 +81,18 @@ func NewEnforcer(grantable []config.GrantableConfig) (*Enforcer, error) {
 	return &Enforcer{pairings: pairings}, nil
 }
 
+// ListPairings returns the approved grantable universe so a control client can
+// discover what it may ask for. The returned pairings expose only references and
+// scope bounds (CredentialRef/HostPattern/AuthStrategy/MaxBound) — never a secret.
+// Order is unspecified: the universe is a set keyed by identity triple, not a list.
+func (e *Enforcer) ListPairings() []*Pairing {
+	out := make([]*Pairing, 0, len(e.pairings))
+	for _, p := range e.pairings {
+		out = append(out, p)
+	}
+	return out
+}
+
 // Authorize returns nil if the proposed service is an authorized grant, or a
 // specific error naming the constraint that failed. A grant is authorized iff its
 // identity matches one approved pairing exactly, its policy narrows within that
