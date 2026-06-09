@@ -23,9 +23,6 @@ const (
 	magenta = "\033[35m"
 	cyan    = "\033[36m"
 	gray    = "\033[90m"
-
-	// Subtle dark gray background for [request]/[response] tags
-	tagBg = "\033[48;5;236m" // dark gray background (256-color)
 )
 
 // 24-bit color formatting
@@ -145,9 +142,6 @@ func (h *TextHandler) formatExamineRequest(b *strings.Builder, attrs map[string]
 		b.WriteString("[ERR: no color]")
 		b.WriteString(reset)
 		b.WriteString(" ")
-		// Continue anyway
-		colorFg = ""
-		colorBg = ""
 	} else {
 		// [req:xxxx] tag with colored background - last 4 chars of request ID for correlation
 		shortID := requestID
@@ -283,9 +277,6 @@ func (h *TextHandler) formatExamineResponse(b *strings.Builder, attrs map[string
 		b.WriteString("[ERR: no color]")
 		b.WriteString(reset)
 		b.WriteString(" ")
-		// Continue anyway
-		colorFg = ""
-		colorBg = ""
 	} else {
 		// [res:xxxx] tag with colored background - last 4 chars of request ID for correlation
 		shortID := requestID
@@ -305,7 +296,7 @@ func (h *TextHandler) formatExamineResponse(b *strings.Builder, attrs map[string
 	// Status code with semantic color
 	b.WriteString(h.statusColor(status))
 	b.WriteString(bold)
-	b.WriteString(fmt.Sprintf("%d", status))
+	fmt.Fprintf(b, "%d", status)
 	b.WriteString(reset)
 	b.WriteString(" ")
 
@@ -492,7 +483,7 @@ func (h *TextHandler) formatInjectResponse(b *strings.Builder, attrs map[string]
 	// Status code with semantic color
 	b.WriteString(h.statusColor(status))
 	b.WriteString(bold)
-	b.WriteString(fmt.Sprintf("%d", status))
+	fmt.Fprintf(b, "%d", status)
 	b.WriteString(reset)
 
 	// Duration
@@ -505,7 +496,7 @@ func (h *TextHandler) formatInjectResponse(b *strings.Builder, attrs map[string]
 		} else {
 			b.WriteString(green)
 		}
-		b.WriteString(fmt.Sprintf("%dms", duration))
+		fmt.Fprintf(b, "%dms", duration)
 		b.WriteString(reset)
 	}
 }
@@ -542,7 +533,8 @@ func (h *TextHandler) formatDetail(b *strings.Builder, msg string, attrs map[str
 	b.WriteString(" ")
 
 	// Apply color with optional background if specified
-	if detailColor == "green" {
+	switch detailColor {
+	case "green":
 		if showBg {
 			b.WriteString(bg24(40, 100, 40)) // Dark green background
 			b.WriteString(fg24(150, 255, 150))
@@ -550,7 +542,7 @@ func (h *TextHandler) formatDetail(b *strings.Builder, msg string, attrs map[str
 		} else {
 			b.WriteString(green)
 		}
-	} else if detailColor == "orange" {
+	case "orange":
 		if showBg {
 			b.WriteString(bg24(100, 60, 20))  // Deep dark orange background
 			b.WriteString(fg24(255, 180, 80)) // Bright orange text
@@ -558,7 +550,7 @@ func (h *TextHandler) formatDetail(b *strings.Builder, msg string, attrs map[str
 		} else {
 			b.WriteString(fg24(255, 140, 0)) // Deep orange
 		}
-	} else if detailColor == "blue" {
+	case "blue":
 		if showBg {
 			b.WriteString(bg24(30, 50, 100))
 			b.WriteString(fg24(150, 200, 255))
@@ -566,7 +558,7 @@ func (h *TextHandler) formatDetail(b *strings.Builder, msg string, attrs map[str
 		} else {
 			b.WriteString(blue)
 		}
-	} else if detailColor == "lightblue" {
+	case "lightblue":
 		if showBg {
 			b.WriteString(bg24(20, 40, 80))    // Dark blue background
 			b.WriteString(fg24(150, 200, 255)) // Light blue text
@@ -637,18 +629,18 @@ func (h *TextHandler) formatGeneric(b *strings.Builder, msg string, level slog.L
 		switch k {
 		case "error":
 			b.WriteString(red)
-			b.WriteString(fmt.Sprintf("%v", v))
+			fmt.Fprintf(b, "%v", v)
 			b.WriteString(reset)
 		case "host", "path", "url", "address":
 			b.WriteString(blue)
-			b.WriteString(fmt.Sprintf("%v", v))
+			fmt.Fprintf(b, "%v", v)
 			b.WriteString(reset)
 		case "status", "port":
 			b.WriteString(cyan)
-			b.WriteString(fmt.Sprintf("%v", v))
+			fmt.Fprintf(b, "%v", v)
 			b.WriteString(reset)
 		default:
-			b.WriteString(fmt.Sprintf("%v", v))
+			fmt.Fprintf(b, "%v", v)
 		}
 	}
 }

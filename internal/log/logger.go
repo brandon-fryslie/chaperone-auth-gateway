@@ -56,7 +56,9 @@ var colorIndex atomic.Uint64
 // NextCorrelationColor returns the next color from the palette for request/response correlation.
 // Rotates through the palette to ensure adjacent connections have different colors.
 func NextCorrelationColor() (r, g, b int) {
-	idx := int(colorIndex.Add(1)) % len(colorPalette)
+	// Reduce modulo the palette length in uint64 space and index directly —
+	// a uint64 is a valid slice index, so no narrowing conversion is needed.
+	idx := colorIndex.Add(1) % uint64(len(colorPalette))
 	c := colorPalette[idx]
 	return c[0], c[1], c[2]
 }

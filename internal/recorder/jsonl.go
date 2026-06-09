@@ -2,6 +2,7 @@ package recorder
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,10 +15,11 @@ import (
 // JSONLRecorder records HTTP traffic in JSON Lines format.
 // Each line is a complete JSON object representing a request or response.
 type JSONLRecorder struct {
-	mu     sync.Mutex
-	writer io.Writer
-	file   *os.File // If writing to file, for cleanup
-	engine *capture.Engine
+	mu       sync.Mutex
+	writer   io.Writer
+	file     *os.File // If writing to file, for cleanup
+	engine   *capture.Engine
+	writeErr error // First write failure, surfaced at Close so a truncated recording is never silent
 }
 
 // JSONLEntry represents a single JSONL entry (request or response).
@@ -56,7 +58,7 @@ func NewJSONLFileRecorder(path string) (*JSONLRecorder, error) {
 
 	// Set permissions to 0600 (owner read/write only)
 	if err := file.Chmod(0600); err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("failed to set file permissions: %w", err)
 	}
 
@@ -174,9 +176,11 @@ func (r *JSONLRecorder) writeEntry(entry JSONLEntry) {
 		return
 	}
 
-	// Write JSON line + newline
-	r.writer.Write(data)
-	r.writer.Write([]byte("\n"))
+	// Write JSON line + newline as a single write, recording the first failure
+	// so Close can surface it. A truncated recording matters to its reader.
+	if _, err := r.writer.Write(append(data, '\n')); err != nil && r.writeErr == nil {
+		r.writeErr = err
+	}
 }
 
 // Close closes the underlying file if this recorder owns it.
@@ -185,9 +189,9 @@ func (r *JSONLRecorder) Close() error {
 	defer r.mu.Unlock()
 
 	if r.file != nil {
-		return r.file.Close()
+		return errors.Join(r.writeErr, r.file.Close())
 	}
-	return nil
+	return r.writeErr
 }
 
 // GetEngine returns the capture engine for direct use.

@@ -11,6 +11,7 @@ import (
 
 // Event types
 const (
+	//nolint:gosec // G101: audit event-name constant, not a credential
 	EventCredentialInjected  = "credential_injected"
 	EventAuthFailure         = "auth_failure"
 	EventPolicyDenied        = "policy_denied"

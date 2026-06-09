@@ -58,7 +58,7 @@ func (e *Engine) CaptureRequest(req *http.Request, startTime time.Time) (*Captur
 
 	// Read ENTIRE body (no limit) to ensure proper restoration
 	body, err := io.ReadAll(teeReader)
-	req.Body.Close()
+	_ = req.Body.Close()
 
 	if err != nil {
 		captured.BodyError = err.Error()
@@ -125,7 +125,7 @@ func (e *Engine) CaptureResponse(resp *http.Response, endTime time.Time) (*Captu
 
 	// Read ENTIRE body (no limit) to ensure proper restoration
 	body, err := io.ReadAll(teeReader)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if err != nil {
 		captured.BodyError = err.Error()

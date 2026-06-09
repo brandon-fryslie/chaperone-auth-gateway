@@ -3,13 +3,25 @@
 package proxy
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"time"
 
+	"github.com/bmf/chaperone/internal/audit"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/elazarl/goproxy"
 )
+
+// logAudit writes an audit entry and surfaces a write failure to the
+// operational log. An audit trail that fails to record without anyone
+// noticing is a security gap, not a minor IO hiccup — the failure must be
+// loud. [LAW:no-silent-failure] [LAW:single-enforcer]
+func logAudit(ctx context.Context, auditLogger audit.AuditLogger, entry audit.Entry) {
+	if err := auditLogger.Log(entry); err != nil {
+		log.Error(ctx, "audit log write failed", err, "event", entry.Event)
+	}
+}
 
 // requestMetadata stores request-specific data for HAR recording and response logging.
 type requestMetadata struct {
