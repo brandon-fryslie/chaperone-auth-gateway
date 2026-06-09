@@ -43,8 +43,10 @@ func SpawnChild(ctx context.Context, cfg ProcessConfig) (*ProcessResult, error) 
 		return nil, fmt.Errorf("failed to build environment: %w", err)
 	}
 
-	// Create command
-	cmd := exec.Command(cfg.Command[0], cfg.Command[1:]...)
+	// Create command. Launching a caller-supplied command is the defining
+	// purpose of run/examine mode, not an injection vector — the command comes
+	// from the operator's own config or CLI args, not untrusted input.
+	cmd := exec.Command(cfg.Command[0], cfg.Command[1:]...) // #nosec G204
 	cmd.Env = childEnv
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout

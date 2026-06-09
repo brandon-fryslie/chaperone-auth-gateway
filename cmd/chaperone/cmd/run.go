@@ -165,7 +165,7 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 
 	// Print startup banner to stderr BEFORE starting child
 	// After this, all chaperone output goes to the log file only
-	run.PrintRunBanner(os.Stderr, run.RunBannerConfig{
+	run.PrintRunBanner(run.RunBannerConfig{
 		Service: serviceName,
 		Command: formatRunCommand(svc.Run.Command, svc.Run.Args),
 		LogPath: logPath,

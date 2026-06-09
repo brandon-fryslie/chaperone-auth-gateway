@@ -371,7 +371,7 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Chaperone will start a proxy server and launch your command.\n")
 		fmt.Fprintf(os.Stderr, "The proxy will log all requests to help you discover authentication patterns.\n\n")
 
-		run.PrintExamineBanner(os.Stderr, run.ExamineBannerConfig{
+		run.PrintExamineBanner(run.ExamineBannerConfig{
 			Command:    formatCommand(cliCommand),
 			LogPath:    logPath,
 			HAREnabled: enableHAR,

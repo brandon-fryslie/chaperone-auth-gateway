@@ -2,7 +2,7 @@ package run
 
 import (
 	"fmt"
-	"io"
+	"os"
 )
 
 // ANSI color codes for terminal output.
@@ -32,25 +32,25 @@ type ExamineBannerConfig struct {
 	HARPath    string // Path to HAR file (if enabled)
 }
 
-// PrintRunBanner prints the startup banner for run mode to the given writer.
-// Typically called with os.Stderr to display before starting the child process.
-func PrintRunBanner(w io.Writer, cfg RunBannerConfig) {
-	fmt.Fprintf(w, "\n%s=== Chaperone Run Mode ===%s\n\n", Cyan+Bold, Reset)
-	fmt.Fprintf(w, "%sService:%s  %s\n", Blue+Bold, Reset, cfg.Service)
-	fmt.Fprintf(w, "%sCommand:%s  %s\n", Blue+Bold, Reset, cfg.Command)
-	fmt.Fprintf(w, "%sLog file:%s %s\n\n", Blue+Bold, Reset, cfg.LogPath)
+// PrintRunBanner prints the run mode startup banner to stderr before the child
+// process starts. Banner output is best-effort terminal decoration.
+func PrintRunBanner(cfg RunBannerConfig) {
+	fmt.Fprintf(os.Stderr, "\n%s=== Chaperone Run Mode ===%s\n\n", Cyan+Bold, Reset)
+	fmt.Fprintf(os.Stderr, "%sService:%s  %s\n", Blue+Bold, Reset, cfg.Service)
+	fmt.Fprintf(os.Stderr, "%sCommand:%s  %s\n", Blue+Bold, Reset, cfg.Command)
+	fmt.Fprintf(os.Stderr, "%sLog file:%s %s\n\n", Blue+Bold, Reset, cfg.LogPath)
 }
 
-// PrintExamineBanner prints the startup banner for examine mode to the given writer.
-// Includes optional HAR recording information if enabled.
-func PrintExamineBanner(w io.Writer, cfg ExamineBannerConfig) {
-	fmt.Fprintf(w, "\n%s=== Chaperone Examine Mode ===%s\n\n", Cyan+Bold, Reset)
-	fmt.Fprintf(w, "%sCommand:%s %s\n", Blue+Bold, Reset, cfg.Command)
-	fmt.Fprintf(w, "%sLog file:%s %s\n", Blue+Bold, Reset, cfg.LogPath)
-	fmt.Fprintf(w, "%sTo print logs from latest run:%s tail -F /tmp/chaperone-examine.latest.log\n\n", Blue+Bold, Reset)
+// PrintExamineBanner prints the examine mode startup banner to stderr, including
+// HAR recording details when enabled. Banner output is best-effort terminal decoration.
+func PrintExamineBanner(cfg ExamineBannerConfig) {
+	fmt.Fprintf(os.Stderr, "\n%s=== Chaperone Examine Mode ===%s\n\n", Cyan+Bold, Reset)
+	fmt.Fprintf(os.Stderr, "%sCommand:%s %s\n", Blue+Bold, Reset, cfg.Command)
+	fmt.Fprintf(os.Stderr, "%sLog file:%s %s\n", Blue+Bold, Reset, cfg.LogPath)
+	fmt.Fprintf(os.Stderr, "%sTo print logs from latest run:%s tail -F /tmp/chaperone-examine.latest.log\n\n", Blue+Bold, Reset)
 
 	if cfg.HAREnabled {
-		fmt.Fprintf(w, "%sHAR Recording:%s %sENABLED%s\n", Blue+Bold, Reset, Green+Bold, Reset)
-		fmt.Fprintf(w, "%sHAR file:%s %s\n\n", Blue+Bold, Reset, cfg.HARPath)
+		fmt.Fprintf(os.Stderr, "%sHAR Recording:%s %sENABLED%s\n", Blue+Bold, Reset, Green+Bold, Reset)
+		fmt.Fprintf(os.Stderr, "%sHAR file:%s %s\n\n", Blue+Bold, Reset, cfg.HARPath)
 	}
 }
