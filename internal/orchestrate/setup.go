@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/bmf/chaperone/internal/auth"
 	"github.com/bmf/chaperone/internal/config"
@@ -48,21 +47,11 @@ func Setup(ctx context.Context, cfg SetupConfig, ca *mitm.CA, logger *slog.Logge
 			continue
 		}
 
-		// Determine auth strategy reference
-		// Support both documented formats:
-		// 1. Combined format (recommended): auth_strategy = "header:x-api-key"
-		// 2. Separate fields format: auth_strategy = "header", header_name = "x-api-key"
-		authStrategyRef := svcCfg.AuthStrategy
-
-		if strings.HasPrefix(svcCfg.AuthStrategy, "header:") {
-			// Combined format: auth_strategy = "header:x-api-key"
-			headerName := svcCfg.AuthStrategy[7:] // Extract "x-api-key" from "header:x-api-key"
-			authStrategyRef = svcCfg.AuthStrategy
+		// Canonicalize the auth strategy ref (folds the combined "header:x-api-key"
+		// and separate "header"+header_name spellings into one form).
+		authStrategyRef := service.CanonicalAuthRef(svcCfg.AuthStrategy, svcCfg.HeaderName)
+		if headerName, ok := service.HeaderNameFromRef(authStrategyRef); ok {
 			headerStrategies[headerName] = true
-		} else if svcCfg.AuthStrategy == "header" && svcCfg.HeaderName != "" {
-			// Separate fields format: auth_strategy = "header", header_name = "x-api-key"
-			authStrategyRef = "header:" + svcCfg.HeaderName
-			headerStrategies[svcCfg.HeaderName] = true
 		}
 
 		// Collect credential refs for preloading

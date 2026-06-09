@@ -3,16 +3,18 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 // Config represents the complete application configuration.
 type Config struct {
-	Server   ServerConfig
-	Services map[string]ServiceConfig
-	Logging  LoggingConfig
-	Audit    AuditConfig
+	Server    ServerConfig
+	Services  map[string]ServiceConfig
+	Logging   LoggingConfig
+	Audit     AuditConfig
+	Grantable []GrantableConfig `toml:"grantable"`
 }
 
 // ServerConfig contains HTTP server settings.
@@ -47,6 +49,25 @@ type ServiceConfig struct {
 	Drop           []string   `toml:"drop"`  // URL patterns to block (drops traffic)
 	Strip          []string   `toml:"strip"` // Headers to strip from requests
 	Run            *RunConfig `toml:"run"`   // Run mode configuration (optional)
+}
+
+// GrantableConfig declares one human-approved (credential ↔ host ↔ strategy)
+// pairing that Claude may activate at runtime, plus the MAXIMAL policy bound a
+// grant against it may request. It is the human-owned source of truth for the
+// grantable universe; the grant enforcer derives its decisions from it and
+// nowhere else.
+//
+// allowed_methods / allowed_paths / max_body_bytes describe the WIDEST scope a
+// grant may ask for (empty / zero = unrestricted). A runtime grant may only
+// NARROW within these — never widen.
+type GrantableConfig struct {
+	CredentialRef  string   `toml:"credential_ref"`
+	HostPattern    string   `toml:"host_pattern"`
+	AuthStrategy   string   `toml:"auth_strategy"`
+	HeaderName     string   `toml:"header_name"` // For "header" auth strategy
+	AllowedMethods []string `toml:"allowed_methods"`
+	AllowedPaths   []string `toml:"allowed_paths"`
+	MaxBodyBytes   int64    `toml:"max_body_bytes"`
 }
 
 // LoggingConfig contains logging settings.
@@ -122,7 +143,49 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate grantable pairings (the human-owned grant universe)
+	for i := range c.Grantable {
+		if err := c.Grantable[i].validate(i); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// credentialRefSchemes are the accepted "provider:" prefixes for a credential_ref.
+// A credential_ref is always a POINTER to a secret, never a secret value.
+var credentialRefSchemes = []string{"env:", "file:", "keychain:"}
+
+// validate checks a single grantable pairing's fields. index identifies it in
+// error messages since pairings are an ordered list with no names.
+func (g *GrantableConfig) validate(index int) error {
+	if strings.TrimSpace(g.HostPattern) == "" {
+		return fmt.Errorf("grantable[%d]: host_pattern is required", index)
+	}
+	if strings.TrimSpace(g.AuthStrategy) == "" {
+		return fmt.Errorf("grantable[%d]: auth_strategy is required", index)
+	}
+	if strings.TrimSpace(g.CredentialRef) == "" {
+		return fmt.Errorf("grantable[%d]: credential_ref is required", index)
+	}
+	if !hasCredentialScheme(g.CredentialRef) {
+		return fmt.Errorf("grantable[%d]: credential_ref %q must point to a secret via a known scheme (%s)",
+			index, g.CredentialRef, strings.Join(credentialRefSchemes, ", "))
+	}
+	if g.MaxBodyBytes < 0 {
+		return fmt.Errorf("grantable[%d]: max_body_bytes must not be negative (got %d)", index, g.MaxBodyBytes)
+	}
+	return nil
+}
+
+func hasCredentialScheme(ref string) bool {
+	for _, scheme := range credentialRefSchemes {
+		if strings.HasPrefix(ref, scheme) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetDefaults applies default values to missing fields.
