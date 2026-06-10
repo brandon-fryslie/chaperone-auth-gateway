@@ -116,6 +116,13 @@ User: you
 
 **Status:** 🔲 Planned
 
+**Shipped today — config file trust gate:** Chaperone refuses to start if the
+config file is group/world-writable, owned by a different user, or not a
+regular file. The config decides which credentials are fetched and which hosts
+receive them, so a config writable by another local user would let them
+redirect your credentials. The error message includes the `chmod`/`chown` fix;
+there is no warning-and-continue mode.
+
 ---
 
 ### Layer 4: Network Hardening
