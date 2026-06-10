@@ -54,21 +54,16 @@ cliCommand := args[2:]          // ["python", "script.py"]
 - If extra arguments provided, they must be preceded by `--` separator
 - Returns error if invalid syntax detected
 
-#### 2. Configuration Loading & Merging (lines 71-97)
+#### 2. Configuration Loading
 
 ```go
-// Load configs from two sources (user + project):
-cfg, err := config.LoadWithMerge()
+// Resolve config from a trusted source only (-c flag or ~/.config/chaperone/);
+// config is never read from the current working directory:
+configPath, err := getConfigPath()
+cfg, err := config.Load(configPath)
 
 // Merge CLI command over config service command:
 svc, err := run.PrepareRunConfig(cfg, serviceName, cliCommand)
-
-// Generate socket path (default: /tmp/chaperone-<service>-<pid>.sock)
-socketPath := run.GenerateSocketPath(serviceName, os.Getpid())
-
-// Override server config for Unix socket mode:
-cfg.Server.Socket = socketPath
-cfg.Server.Port = 0  // Disable TCP mode
 ```
 
 **Key Point:** CLI commands override config file settings. Variable expansion happens here (e.g., `${HOME}` → actual path).

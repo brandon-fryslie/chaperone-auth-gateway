@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"os/user"
-	"path/filepath"
 	"strings"
 
 	"github.com/bmf/chaperone/internal/config"
@@ -35,26 +33,10 @@ const (
 )
 
 func runCheck(cmd *cobra.Command, args []string) error {
-	// Try to load config (optional)
+	// Try to load config (optional — check still reports posture without one)
+	// [LAW:one-source-of-truth] resolution lives in getConfigPath; no second copy here
 	var cfg *config.Config
-	configPath := cfgFile
-	if configPath == "" {
-		// Try default paths
-		if home, err := os.UserHomeDir(); err == nil {
-			defaultPath := filepath.Join(home, ".config", "chaperone", "chaperone.toml")
-			if _, err := os.Stat(defaultPath); err == nil {
-				configPath = defaultPath
-			}
-		}
-		if configPath == "" {
-			// Try current directory
-			if _, err := os.Stat("chaperone.toml"); err == nil {
-				configPath = "chaperone.toml"
-			}
-		}
-	}
-
-	if configPath != "" {
+	if configPath, err := getConfigPath(); err == nil {
 		if loaded, err := config.Load(configPath); err == nil {
 			cfg = loaded
 		}
