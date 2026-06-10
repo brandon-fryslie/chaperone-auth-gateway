@@ -61,11 +61,22 @@ type Entry struct {
 	RequestID    string    `json:"request_id"`
 
 	// AU-3 compliance fields
-	ClientIP     string `json:"client_ip"`             // WHO: source of request
-	Outcome      string `json:"outcome"`               // OUTCOME: success|failure|blocked|pass_through
-	StatusCode   int    `json:"status_code,omitempty"` // HTTP status when applicable
-	ErrorMessage string `json:"error,omitempty"`       // Error details on failure
-	Detail       string `json:"detail,omitempty"`      // Event-specific context
+	ClientIP     string  `json:"client_ip"`             // WHO: source of request
+	Caller       *Caller `json:"caller,omitempty"`      // WHO: attested local peer (control-plane events)
+	Outcome      string  `json:"outcome"`               // OUTCOME: success|failure|blocked|pass_through
+	StatusCode   int     `json:"status_code,omitempty"` // HTTP status when applicable
+	ErrorMessage string  `json:"error,omitempty"`       // Error details on failure
+	Detail       string  `json:"detail,omitempty"`      // Event-specific context
+}
+
+// Caller identifies the local process behind a control-plane operation, as
+// attested by the kernel for the unix-socket connection (SO_PEERCRED /
+// LOCAL_PEERCRED) — never self-reported by the client. Presence discriminates
+// an attributed control-plane event from a proxy-side entry, where ClientIP
+// alone carries the source.
+type Caller struct {
+	UID int `json:"uid"`
+	PID int `json:"pid"`
 }
 
 // Logger writes audit events to a configurable output.

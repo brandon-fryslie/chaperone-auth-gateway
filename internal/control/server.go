@@ -42,6 +42,9 @@ func NewServer(api *API, socketPath string, logger *slog.Logger) (*Server, error
 	s.httpServer = &http.Server{
 		Handler:           s.routes(),
 		ReadHeaderTimeout: 10 * time.Second,
+		// Every connection reaching Serve has passed the peer gate; this lifts
+		// the attested identity into each request's context for attribution.
+		ConnContext: peerContext,
 	}
 	return s, nil
 }
@@ -57,16 +60,13 @@ func (s *Server) Start() error {
 	if err != nil {
 		return err
 	}
-	s.listener = ln
-
-	// Owner-only: even on a shared host, only this user may connect.
-	if err := os.Chmod(s.socketPath, 0600); err != nil {
-		_ = ln.Close()
-		return fmt.Errorf("control: chmod socket: %w", err)
-	}
+	// Authenticate every peer at the accept seam: the socket's 0600 mode is the
+	// first layer, the kernel-attested uid check is the deciding one.
+	gated := &peerGate{Listener: ln, ownUID: os.Geteuid(), creds: peerCred, logger: s.logger}
+	s.listener = gated
 
 	go func() {
-		if err := s.httpServer.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := s.httpServer.Serve(gated); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error("control server stopped", "error", err)
 		}
 	}()
@@ -120,12 +120,18 @@ func (s *Server) handleGrant(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use POST"))
 		return
 	}
+	peer, ok := peerFrom(r.Context())
+	if !ok {
+		s.writeError(w, http.StatusInternalServerError,
+			fmt.Errorf("control: connection carries no attested peer identity"))
+		return
+	}
 	var req GrantRequest
 	if err := decodeJSON(r.Body, &req); err != nil {
 		s.writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	res, err := s.api.Grant(req)
+	res, err := s.api.Grant(req, peer)
 	if err != nil {
 		s.writeError(w, statusFor(err), err)
 		return
@@ -138,12 +144,18 @@ func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("use POST"))
 		return
 	}
+	peer, ok := peerFrom(r.Context())
+	if !ok {
+		s.writeError(w, http.StatusInternalServerError,
+			fmt.Errorf("control: connection carries no attested peer identity"))
+		return
+	}
 	var req RevokeRequest
 	if err := decodeJSON(r.Body, &req); err != nil {
 		s.writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	res, err := s.api.Revoke(req)
+	res, err := s.api.Revoke(req, peer)
 	if err != nil {
 		s.writeError(w, statusFor(err), err)
 		return
@@ -184,11 +196,22 @@ func statusFor(err error) int {
 	return http.StatusInternalServerError
 }
 
-// listenUnix binds a unix socket, refusing to stomp a control plane that is
-// already live. On "address already in use" it probes the existing socket: a
-// successful dial means another daemon owns it (fail loudly); a failed dial means
-// the file is stale residue (remove and retry once).
+// listenUnix binds a unix socket owner-only from the instant it exists,
+// refusing to stomp a control plane that is already live. On "address already
+// in use" it probes the existing socket: a successful dial means another daemon
+// owns it (fail loudly); a failed dial means the file is stale residue (remove
+// and retry once).
 func listenUnix(path string) (net.Listener, error) {
+	// The kernel fixes the socket file's mode at bind (0777 &^ umask): tightening
+	// the umask across the bind is the only way the file is 0600 from its first
+	// observable instant — a chmod afterwards leaves a window at the process
+	// umask. [LAW:no-shared-mutable-globals] exception: the umask is process-wide
+	// state, but the kernel offers no per-bind mode; the bracket is held only
+	// across this function, and a concurrent file creation could only come out
+	// stricter, never looser.
+	oldMask := syscall.Umask(0o177)
+	defer syscall.Umask(oldMask)
+
 	ln, err := net.Listen("unix", path)
 	if err == nil {
 		return ln, nil

@@ -74,9 +74,9 @@ func internal(err error) *apiError   { return &apiError{kind: kindInternal, err:
 
 // Grant authorizes a proposed pairing through the enforcer and, only if accepted,
 // upserts it into the live registry so the host becomes injection-eligible at
-// once. Every outcome — accepted or rejected — is audited with the reference and
-// scope, never a secret.
-func (a *API) Grant(req GrantRequest) (GrantResult, error) {
+// once. Every outcome — accepted or rejected — is audited with the reference,
+// scope, and the kernel-attested caller, never a secret.
+func (a *API) Grant(req GrantRequest, caller Peer) (GrantResult, error) {
 	svc := req.toService()
 
 	// Trust boundary: the enforcer is the single authority. Authorize on the RAW
@@ -89,6 +89,7 @@ func (a *API) Grant(req GrantRequest) (GrantResult, error) {
 			Host:         svc.HostPattern,
 			AuthStrategy: svc.AuthStrategyRef,
 			ClientIP:     "unix-socket",
+			Caller:       caller.auditCaller(),
 			Outcome:      "blocked",
 			ErrorMessage: err.Error(),
 			Detail:       grantDetail(svc),
@@ -111,6 +112,7 @@ func (a *API) Grant(req GrantRequest) (GrantResult, error) {
 		Host:         svc.HostPattern,
 		AuthStrategy: svc.AuthStrategyRef,
 		ClientIP:     "unix-socket",
+		Caller:       caller.auditCaller(),
 		Outcome:      "success",
 		Detail:       grantDetail(svc),
 	})
@@ -121,7 +123,7 @@ func (a *API) Grant(req GrantRequest) (GrantResult, error) {
 // Revoke removes the active grant for a host pattern. Absence is a soft success
 // (idempotent, DELETE-style): Unregister's only failure mode is "no such host",
 // so a non-nil error means nothing was there to remove, not a swallowed fault.
-func (a *API) Revoke(req RevokeRequest) (RevokeResult, error) {
+func (a *API) Revoke(req RevokeRequest, caller Peer) (RevokeResult, error) {
 	if req.HostPattern == "" {
 		return RevokeResult{}, badRequest(fmt.Errorf("revoke: host_pattern is required"))
 	}
@@ -138,6 +140,7 @@ func (a *API) Revoke(req RevokeRequest) (RevokeResult, error) {
 		Event:    audit.EventGrantRevoked,
 		Host:     req.HostPattern,
 		ClientIP: "unix-socket",
+		Caller:   caller.auditCaller(),
 		Outcome:  outcome,
 		Detail:   detail,
 	})
