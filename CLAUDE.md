@@ -74,6 +74,7 @@ The request pipeline is split into one file per concern. `handlers.go` is now on
 - `internal/proxy/proxy_auth.go` - Proxy-level authentication: `GenerateProxySecret()`, `proxyAuthHandler`, `proxyAuthConnectHandler` (gate access to the proxy itself)
 - `internal/proxy/conditions.go` - `ChaperoneCondition()` - filter which requests get auth
 - `internal/proxy/cert_adapter.go` - Adapter for goproxy cert store
+- `internal/proxy/upstream_trust.go` - Outbound-trust policy: upstream server certs on MITM'd connections are always verified (goproxy's transport default skips verification; `configureTransport` replaces it). `MITMOptions.UpstreamCAs` / `[server] upstream_ca_file` pin trust to specific roots; nil/unset = system roots. "Verification off" is unrepresentable.
 - Examine-mode handlers live in `internal/examine/handlers.go` (`ConnectHandler`/`RequestHandler`/`ResponseHandler`), not in `internal/proxy`.
 
 ## Authentication System
@@ -216,6 +217,9 @@ Lets Claude Code activate a credential mid-session — without editing config or
 [server]
 address = "127.0.0.1"
 port = 4010
+# Optional: pin outbound trust for MITM'd upstreams to ONLY these PEM roots
+# (unset = system root store; upstream cert verification itself is always on)
+# upstream_ca_file = "/path/to/upstream-roots.pem"
 
 [logging]
 level = "info"  # debug, info, warn, error

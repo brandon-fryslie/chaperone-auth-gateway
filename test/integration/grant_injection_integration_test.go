@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
@@ -132,9 +133,16 @@ func newGrantDaemon(t *testing.T, grantable []config.GrantableConfig) *grantDaem
 	require.NoError(t, err)
 	require.NoError(t, mitm.StoreCA(ca, caKeyPath, caCertPath))
 
+	// Pin the daemon's outbound trust to the test upstream's self-signed cert
+	// through the config knob, exercising the upstream_ca_file path end-to-end
+	// (Setup loads it; CreateProxy hands it to the MITM pipeline).
+	upstreamCAPath := filepath.Join(tempDir, "upstream-ca.pem")
+	upstreamPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: upstream.Certificate().Raw})
+	require.NoError(t, os.WriteFile(upstreamCAPath, upstreamPEM, 0o600))
+
 	auditPath := filepath.Join(tempDir, "audit.log")
 	cfg := &config.Config{
-		Server:    config.ServerConfig{Address: "127.0.0.1", Port: findAvailablePort(t)},
+		Server:    config.ServerConfig{Address: "127.0.0.1", Port: findAvailablePort(t), UpstreamCAFile: upstreamCAPath},
 		Logging:   config.LoggingConfig{Level: "info", Format: "json", Output: "stdout"},
 		Grantable: grantable,
 	}
