@@ -115,7 +115,30 @@ func dropHandler(registry service.ServiceRegistry, auditLogger audit.AuditLogger
 
 		// Check if request matches any drop pattern
 		for _, pattern := range svc.Policy.Drop {
-			urlPattern := service.NewURLPattern(pattern)
+			urlPattern, err := service.ParseURLPattern(pattern)
+			if err != nil {
+				// Drop patterns are validated at the config boundary, so this is
+				// unreachable in a correctly assembled daemon. A drop rule is a
+				// deny control: if it cannot be enforced, fail closed rather than
+				// silently letting matching traffic through. [LAW:no-silent-failure]
+				logger.Error("unenforceable drop pattern; blocking request", "pattern", pattern, "error", err)
+
+				logAudit(reqCtx, auditLogger, audit.Entry{
+					Event:      audit.EventRequestDropped,
+					Service:    svc.Name,
+					Host:       r.Host,
+					Path:       r.URL.Path,
+					Method:     r.Method,
+					RequestID:  log.RequestID(reqCtx),
+					ClientIP:   extractClientIP(r),
+					Outcome:    "blocked",
+					StatusCode: http.StatusForbidden,
+					Detail:     fmt.Sprintf("unenforceable drop pattern: %s", pattern),
+				})
+
+				return r, goproxy.NewResponse(r, goproxy.ContentTypeText,
+					http.StatusForbidden, "Request blocked by drop policy")
+			}
 			if urlPattern.Matches(hostname, r.URL.Path) {
 				log.Info(reqCtx, "dropping request matching pattern",
 					"pattern", pattern,

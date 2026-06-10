@@ -2,7 +2,6 @@ package service
 
 import (
 	"fmt"
-	"strings"
 )
 
 // Narrows reports whether requested is a refinement of (subset of, or equal to)
@@ -13,9 +12,11 @@ import (
 // A nil policy is treated as the widest policy. It returns a specific error naming
 // the dimension and values that widen, or nil if requested narrows within bound.
 //
-// Path patterns are restricted to the proven-containable vocabulary (exact or
+// Path patterns parse through the one pathPattern vocabulary (exact or
 // "<prefix>/*"); an unsupported glob in either argument is rejected rather than
-// guessed, keeping the check sound ([LAW:no-silent-failure]).
+// guessed, keeping the check sound ([LAW:no-silent-failure]). Containment is
+// decided over the same normalized, case-folded form the runtime matcher uses,
+// so an approved grant can never out-match its bound. [LAW:one-source-of-truth]
 func Narrows(requested, bound *Policy) error {
 	req := orEmpty(requested)
 	max := orEmpty(bound)
@@ -103,51 +104,12 @@ func bodyNarrow(req, bound int64) error {
 	return nil
 }
 
-// pathPattern is a path allowlist entry from the supported vocabulary: an exact
-// path, or a prefix wildcard ("<prefix>/*" stored as prefix "<prefix>/").
-type pathPattern struct {
-	prefix   string // for wildcard: the literal prefix that paths must start with
-	wildcard bool
-}
-
-// parsePathPattern parses an allowlist entry, rejecting any glob construct outside
-// the proven-containable vocabulary (exact, or a single trailing "/*").
-func parsePathPattern(s string) (pathPattern, error) {
-	if wild, ok := strings.CutSuffix(s, "/*"); ok {
-		body := wild + "/"
-		if containsGlobMeta(body) {
-			return pathPattern{}, fmt.Errorf("unsupported glob pattern (only exact paths and a trailing \"/*\" are supported)")
-		}
-		return pathPattern{prefix: body, wildcard: true}, nil
-	}
-	if containsGlobMeta(s) {
-		return pathPattern{}, fmt.Errorf("unsupported glob pattern (only exact paths and a trailing \"/*\" are supported)")
-	}
-	return pathPattern{prefix: s, wildcard: false}, nil
-}
-
-func containsGlobMeta(s string) bool {
-	return strings.ContainsAny(s, "*?[")
-}
-
 // containedByAny reports whether inner is contained by at least one of outers.
 func containedByAny(inner pathPattern, outers []pathPattern) bool {
 	for _, o := range outers {
-		if contains(o, inner) {
+		if o.contains(inner) {
 			return true
 		}
 	}
 	return false
-}
-
-// contains reports whether every path matching inner also matches outer.
-func contains(outer, inner pathPattern) bool {
-	if !outer.wildcard {
-		// Exact outer matches only its own literal; only an equal exact inner is a subset.
-		return !inner.wildcard && inner.prefix == outer.prefix
-	}
-	// Wildcard outer "<p>/*" covers every path beginning with "<p>/". An exact inner
-	// is contained when it has that prefix; a wildcard inner "<q>/*" is contained
-	// when "<q>/" has that prefix — both reduce to one HasPrefix on the literal.
-	return strings.HasPrefix(inner.prefix, outer.prefix)
 }

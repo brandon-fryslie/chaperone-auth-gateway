@@ -106,6 +106,16 @@ func (e *Enforcer) Authorize(proposed *service.Service) error {
 		return err
 	}
 
+	// Narrows only parses requested paths when the bound restricts paths; an
+	// unbounded pairing would otherwise accept a pattern the runtime matcher
+	// can't match — a grant of nothing that looks like a grant of something.
+	// Reject the vocabulary error here, loudly. [LAW:no-silent-failure]
+	if proposed.Policy != nil {
+		if err := service.ValidatePathPatterns(proposed.Policy.AllowedPaths); err != nil {
+			return fmt.Errorf("grant rejected: allowed_paths: %w", err)
+		}
+	}
+
 	id := identityOf(proposed.CredentialRef, proposed.HostPattern, proposed.AuthStrategyRef, proposed.HeaderName)
 	pairing, ok := e.pairings[id]
 	if !ok {
