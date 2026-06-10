@@ -71,7 +71,7 @@ The request pipeline is split into one file per concern. `handlers.go` is now on
 - `internal/proxy/policy_handler.go` - `policyHandler` (methods/paths/body size) plus `dropHandler` and `stripHandler` (drop/strip policy)
 - `internal/proxy/auth_handler.go` - `authHandler` (**main injection**: fetch secret → apply strategy) and `securityStripAuthHandler` (strip client-supplied auth before injecting)
 - `internal/proxy/recording_handler.go` - `recordRequestHandler/recordResponseHandler` - traffic recording
-- `internal/proxy/proxy_auth.go` - Proxy-level authentication: `GenerateProxySecret()`, `proxyAuthHandler`, `proxyAuthConnectHandler` (gate access to the proxy itself)
+- `internal/proxy/proxy_auth.go` - Proxy-level authentication: `GenerateProxySecret()`, `proxyAuthHandler`, `proxyAuthConnectHandler` (gate access to the proxy itself). The gate is mandatory: `NewWithMITM`/`NewExamineProxy` take the secret as a required positional parameter and error on an empty one, so an ungated intercepting proxy is unconstructible. All modes (inject/run/examine) generate a per-run secret; inject prints the credentialed `HTTP_PROXY` URL at startup. Clients authenticate at the CONNECT; requests decrypted from that tunnel carry no `Proxy-Authorization`, so the connect gate stamps the connection's `requestMetadata.proxyAuthenticated` and the request gate trusts the stamp.
 - `internal/proxy/conditions.go` - `ChaperoneCondition()` - filter which requests get auth
 - `internal/proxy/cert_adapter.go` - Adapter for goproxy cert store
 - `internal/proxy/upstream_trust.go` - Outbound-trust policy: upstream server certs on MITM'd connections are always verified (goproxy's transport default skips verification; `configureTransport` replaces it). `MITMOptions.UpstreamCAs` / `[server] upstream_ca_file` pin trust to specific roots; nil/unset = system roots. "Verification off" is unrepresentable.
@@ -175,6 +175,7 @@ Lets Claude Code activate a credential mid-session — without editing config or
 ## Key Workflows
 
 ### Request Flow (Inject Mode)
+0. Client → CONNECT with `Proxy-Authorization` → `proxyAuthConnectHandler` → 407 without the per-run secret; on success stamps the tunnel authenticated
 1. Client → CONNECT → `connectHandler` → decides MITM or passthrough
 2. If MITM: `policyHandler` → check allowed methods/paths/body size
 3. `authHandler` → fetch secret → apply strategy → **inject header**
@@ -370,6 +371,7 @@ HTTP headers are case-insensitive but Go canonicalizes them. When injecting auth
 ### Policy Enforcement Pipeline (handlers split across `internal/proxy/*_handler.go`)
 
 Requests flow through handlers in order:
+0. `proxyAuthConnectHandler`/`proxyAuthHandler` (`proxy_auth.go`) - Proxy access gate: 407 without the per-run proxy secret, before anything else runs
 1. `connectHandler` (`connect_handler.go`) - Decide MITM vs transparent tunnel
 2. `policyHandler` (`policy_handler.go`) - Check methods/paths/body size (fail fast); `dropHandler`/`stripHandler` apply drop/strip policy
 3. `securityStripAuthHandler` (`auth_handler.go`) - Strip client-supplied auth so it can't leak past the proxy

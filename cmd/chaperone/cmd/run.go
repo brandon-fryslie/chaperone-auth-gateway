@@ -146,7 +146,10 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 
 	// Create and start proxy server with authentication. Run mode does not expose
 	// a control plane, so the proxy owns its own audit logger (nil = self-owned).
-	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, proxySecret, nil)
+	proxyServer, err := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, proxySecret, nil)
+	if err != nil {
+		return err
+	}
 
 	log.Info(ctx, "starting proxy server", "address", cfg.Server.Address)
 	if err := proxyServer.Start(); err != nil {

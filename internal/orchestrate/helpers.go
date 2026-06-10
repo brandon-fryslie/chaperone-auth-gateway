@@ -89,37 +89,41 @@ func InitializeEphemeralCA(ctx context.Context, pid int, shutdownMgr *shutdown.M
 // either static services exist now OR the grantable universe is non-empty (a
 // runtime grant can add an injection-eligible host without a restart). Only a
 // daemon that can never MITM anything falls back to a transparent proxy.
-// If proxySecret is provided, proxy requires authentication.
+// The injecting pipeline requires a non-empty proxySecret; an empty one is a
+// loud construction error, never an ungated server. [LAW:no-silent-failure]
 // If auditLogger is non-nil, the proxy writes to it (so the daemon shares one
 // audit trail with the control plane); if nil, the proxy owns its own.
-func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, result *SetupResult, proxySecret string, auditLogger audit.AuditLogger) *proxy.Server {
+func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, result *SetupResult, proxySecret string, auditLogger audit.AuditLogger) (*proxy.Server, error) {
 	grantsPossible := result.GrantEnforcer != nil && len(result.GrantEnforcer.ListPairings()) > 0
 
-	var proxyServer *proxy.Server
 	if len(result.ServiceRegistry.ListAll()) > 0 || grantsPossible {
 		// Use MITM-enabled proxy if services are configured or grants are possible
 		// Pass registries via options to enable authentication
-		proxyServer = proxy.NewWithMITM(
+		proxyServer, err := proxy.NewWithMITM(
 			cfg,
 			logger,
 			shutdownMgr,
 			result.ServiceRegistry,
 			result.CertCache,
+			proxySecret,
 			&proxy.MITMOptions{
 				SecretRegistry: result.SecretRegistry,
 				AuthRegistry:   result.AuthRegistry,
-				ProxySecret:    proxySecret,
 				AuditLogger:    auditLogger,
 				UpstreamCAs:    result.UpstreamCAs,
 			},
 		)
+		if err != nil {
+			return nil, err
+		}
 		log.Info(ctx, "proxy server created with MITM support and authentication")
-	} else {
-		// Use transparent proxy if no services configured
-		proxyServer = proxy.New(cfg, logger, shutdownMgr)
-		log.Info(ctx, "proxy server created in transparent mode (no services configured)")
+		return proxyServer, nil
 	}
-	return proxyServer
+
+	// Use transparent proxy if no services configured
+	proxyServer := proxy.New(cfg, logger, shutdownMgr)
+	log.Info(ctx, "proxy server created in transparent mode (no services configured)")
+	return proxyServer, nil
 }
 
 // CreateAuditLogger creates the daemon's single audit sink from config and

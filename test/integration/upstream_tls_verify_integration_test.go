@@ -74,7 +74,7 @@ func startInjectingProxy(t *testing.T, upstreamHost string, upstreamCAs *x509.Ce
 	shutdownMgr := shutdown.NewManager(logger)
 	secretRegistry, authRegistry := setupAuthRegistries()
 
-	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+	proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 		SecretRegistry: secretRegistry,
 		AuthRegistry:   authRegistry,
 		UpstreamCAs:    upstreamCAs,
@@ -85,7 +85,7 @@ func startInjectingProxy(t *testing.T, upstreamHost string, upstreamCAs *x509.Ce
 	mitmPool := x509.NewCertPool()
 	mitmPool.AddCert(proxyCA.Certificate())
 
-	proxyURL, dialer := proxy.GetProxyURL(cfg)
+	proxyURL, dialer := gatedProxyURL(t, proxyServer)
 	return &http.Client{
 		Transport: &http.Transport{
 			Proxy:           http.ProxyURL(proxyURL),

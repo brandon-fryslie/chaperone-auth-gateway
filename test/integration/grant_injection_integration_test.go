@@ -24,7 +24,6 @@ import (
 	"github.com/bmf/chaperone/internal/mcpgrants"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/orchestrate"
-	"github.com/bmf/chaperone/internal/proxy"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -160,7 +159,8 @@ func newGrantDaemon(t *testing.T, grantable []config.GrantableConfig) *grantDaem
 	auditLogger, err := audit.NewLogger(audit.Config{Enabled: true, Path: auditPath})
 	require.NoError(t, err)
 
-	proxyServer := orchestrate.CreateProxy(ctx, cfg, logger, shutdownMgr, result, "", auditLogger)
+	proxyServer, err := orchestrate.CreateProxy(ctx, cfg, logger, shutdownMgr, result, testProxySecret, auditLogger)
+	require.NoError(t, err)
 	require.NoError(t, proxyServer.Start())
 
 	// Unix socket paths are capped (104 chars on macOS); t.TempDir() is too deep, so
@@ -180,7 +180,7 @@ func newGrantDaemon(t *testing.T, grantable []config.GrantableConfig) *grantDaem
 	require.True(t, pool.AppendCertsFromPEM(caCertPEM))
 	pool.AddCert(upstream.Certificate())
 
-	proxyURL, dialer := proxy.GetProxyURL(cfg)
+	proxyURL, dialer := gatedProxyURL(t, proxyServer)
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy:           http.ProxyURL(proxyURL),

@@ -142,7 +142,7 @@ func TestSelectiveMITMWithTrustedCA(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 
-	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
+	proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
 	err = proxyServer.Start()
 	require.NoError(t, err, "Proxy server should start")
 	defer proxyServer.Stop(ctx)
@@ -154,7 +154,7 @@ func TestSelectiveMITMWithTrustedCA(t *testing.T) {
 	ok := certPool.AppendCertsFromPEM(caCertPEM)
 	require.True(t, ok, "Should add CA cert to pool")
 
-	proxyURL, dialer := proxy.GetProxyURL(cfg)
+	proxyURL, dialer := gatedProxyURL(t, proxyServer)
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
@@ -249,14 +249,14 @@ func TestTransparentTunnelForNonConfiguredDomains(t *testing.T) {
 	logger := slog.Default()
 	shutdownMgr := shutdown.NewManager(logger)
 
-	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
+	proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
 	err = proxyServer.Start()
 	require.NoError(t, err, "Proxy server should start")
 	defer proxyServer.Stop(ctx)
 
 	// Create client that trusts the upstream server's self-signed cert
 	// (since we're doing transparent tunnel, we need to trust the upstream server)
-	proxyURL, dialer := proxy.GetProxyURL(cfg)
+	proxyURL, dialer := gatedProxyURL(t, proxyServer)
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
@@ -365,7 +365,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
 		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -376,7 +376,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -464,7 +464,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
 		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -475,7 +475,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -562,7 +562,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
 		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -573,7 +573,7 @@ func TestPolicyEnforcementEndToEnd(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -676,13 +676,13 @@ func TestCertificateTrustValidation(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
 		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
 
 		// Create client that does NOT trust test CA (uses system certs only)
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy: http.ProxyURL(proxyURL),
@@ -766,7 +766,7 @@ func TestCertificateTrustValidation(t *testing.T) {
 		ctx := context.Background()
 		logger := slog.Default()
 		shutdownMgr := shutdown.NewManager(logger)
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{UpstreamCAs: trustUpstreams(upstreamServer)})
 		err = proxyServer.Start()
 		require.NoError(t, err)
 		defer proxyServer.Stop(ctx)
@@ -777,7 +777,7 @@ func TestCertificateTrustValidation(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),

@@ -122,7 +122,8 @@ func TestDropPatternBlocksRequests(t *testing.T) {
 				},
 			}
 			shutdownMgr := shutdown.NewManager(slog.Default())
-			proxyServer := proxy.NewWithMITM(
+			proxyServer := newGatedMITMProxy(
+				t,
 				cfg,
 				slog.Default(),
 				shutdownMgr,
@@ -141,7 +142,7 @@ func TestDropPatternBlocksRequests(t *testing.T) {
 			defer proxyServer.Stop(ctx)
 
 			// Get proxy address
-			proxyURL, dialer := proxy.GetProxyURL(cfg)
+			proxyURL, dialer := gatedProxyURL(t, proxyServer)
 			require.NoError(t, err)
 
 			// Create client that trusts our CA
@@ -300,7 +301,8 @@ func TestStripHeadersRemovesHeaders(t *testing.T) {
 				},
 			}
 			shutdownMgr := shutdown.NewManager(slog.Default())
-			proxyServer := proxy.NewWithMITM(
+			proxyServer := newGatedMITMProxy(
+				t,
 				cfg,
 				slog.Default(),
 				shutdownMgr,
@@ -319,7 +321,7 @@ func TestStripHeadersRemovesHeaders(t *testing.T) {
 			defer proxyServer.Stop(ctx)
 
 			// Get proxy address
-			proxyURL, dialer := proxy.GetProxyURL(cfg)
+			proxyURL, dialer := gatedProxyURL(t, proxyServer)
 			require.NoError(t, err)
 
 			// Create client that trusts our CA
@@ -453,7 +455,8 @@ func TestStripPreventsWrongCredentialLeakage(t *testing.T) {
 		},
 	}
 	shutdownMgr := shutdown.NewManager(slog.Default())
-	proxyServer := proxy.NewWithMITM(
+	proxyServer := newGatedMITMProxy(
+		t,
 		cfg,
 		slog.Default(),
 		shutdownMgr,
@@ -472,7 +475,7 @@ func TestStripPreventsWrongCredentialLeakage(t *testing.T) {
 	defer proxyServer.Stop(ctx)
 
 	// Get proxy address
-	proxyURL, dialer := proxy.GetProxyURL(cfg)
+	proxyURL, dialer := gatedProxyURL(t, proxyServer)
 	require.NoError(t, err)
 
 	// Create client that trusts our CA

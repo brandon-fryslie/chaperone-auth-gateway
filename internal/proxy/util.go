@@ -30,6 +30,12 @@ type requestMetadata struct {
 	strippedHeaders        []string
 	requestID              string // For correlating request/response log colors
 	colorR, colorG, colorB int    // Pre-computed correlation color for this connection
+
+	// proxyAuthenticated records that this connection's CONNECT presented valid
+	// proxy credentials. Written ONLY by proxyAuthConnectHandler after the gate
+	// passes; every other creator of requestMetadata leaves it false, so a true
+	// value is proof the tunnel was authenticated. [LAW:one-source-of-truth]
+	proxyAuthenticated bool
 }
 
 // extractClientIP extracts the client IP from an HTTP request.
