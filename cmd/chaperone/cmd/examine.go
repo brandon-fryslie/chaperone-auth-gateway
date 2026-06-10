@@ -16,6 +16,7 @@ import (
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/proxy"
 	"github.com/bmf/chaperone/internal/recorder"
+	"github.com/bmf/chaperone/internal/redact"
 	"github.com/bmf/chaperone/internal/run"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
@@ -324,11 +325,23 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		examineLogger.SetCommandName(cliCommand[0])
 	}
 
-	// Create HAR recorder if enabled
+	// Generate proxy secret for authentication. Generated before the recorder
+	// exists so the recorder's redactor can scrub it: nothing recordable is
+	// allowed to predate the redaction policy that covers it.
+	// [LAW:no-ambient-temporal-coupling]
+	proxySecret, err := proxy.GenerateProxySecret()
+	if err != nil {
+		return fmt.Errorf("failed to generate proxy secret: %w", err)
+	}
+
+	// Create HAR recorder if enabled. Examine MITMs every host and sees the
+	// client's LIVE credentials; the redactor's positional policy keeps
+	// Authorization/Cookie material out of the .har file while header names
+	// stay visible for auth discovery.
 	var rec *recorder.Recorder
 	var harPath string
 	if enableHAR {
-		rec = recorder.NewRecorder()
+		rec = recorder.NewRecorder(redact.NewRedactor(redact.Static(proxySecret)))
 
 		// Determine HAR output path
 		if harOutputFile != "" {
@@ -405,12 +418,6 @@ func runExamine(cmd *cobra.Command, args []string) error {
 	var sentinelChan chan struct{}
 	if len(cliCommand) > 0 {
 		sentinelChan = make(chan struct{})
-	}
-
-	// Generate proxy secret for authentication
-	proxySecret, err := proxy.GenerateProxySecret()
-	if err != nil {
-		return fmt.Errorf("failed to generate proxy secret: %w", err)
 	}
 
 	server, err := proxy.NewExamineProxy(cfg, slog.Default(), shutdownMgr, certCache, examineLogger, rec, sentinelChan, proxySecret)

@@ -10,15 +10,19 @@ import (
 	"time"
 
 	"github.com/bmf/chaperone/internal/capture"
+	"github.com/bmf/chaperone/internal/redact"
 )
 
 // JSONLRecorder records HTTP traffic in JSON Lines format.
 // Each line is a complete JSON object representing a request or response.
+// Every entry is redacted as it is built, before it reaches the writer or
+// any in-memory JSON form. [LAW:single-enforcer]
 type JSONLRecorder struct {
 	mu       sync.Mutex
 	writer   io.Writer
 	file     *os.File // If writing to file, for cleanup
 	engine   *capture.Engine
+	redactor redact.Redactor
 	writeErr error // First write failure, surfaced at Close so a truncated recording is never silent
 }
 
@@ -42,15 +46,19 @@ type JSONLEntry struct {
 }
 
 // NewJSONLRecorder creates a new JSONL recorder writing to the given writer.
-func NewJSONLRecorder(writer io.Writer) *JSONLRecorder {
+// The redactor is taken by value: its zero value still enforces the
+// positional credential policy, so an unredacted recorder cannot be
+// constructed. [LAW:types-are-the-program]
+func NewJSONLRecorder(writer io.Writer, redactor redact.Redactor) *JSONLRecorder {
 	return &JSONLRecorder{
-		writer: writer,
-		engine: capture.NewEngine(10 * 1024 * 1024), // 10MB max
+		writer:   writer,
+		engine:   capture.NewEngine(10 * 1024 * 1024), // 10MB max
+		redactor: redactor,
 	}
 }
 
 // NewJSONLFileRecorder creates a new JSONL recorder writing to a file.
-func NewJSONLFileRecorder(path string) (*JSONLRecorder, error) {
+func NewJSONLFileRecorder(path string, redactor redact.Redactor) (*JSONLRecorder, error) {
 	file, err := os.Create(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create JSONL file: %w", err)
@@ -63,9 +71,10 @@ func NewJSONLFileRecorder(path string) (*JSONLRecorder, error) {
 	}
 
 	return &JSONLRecorder{
-		writer: file,
-		file:   file,
-		engine: capture.NewEngine(10 * 1024 * 1024),
+		writer:   file,
+		file:     file,
+		engine:   capture.NewEngine(10 * 1024 * 1024),
+		redactor: redactor,
 	}, nil
 }
 
@@ -87,18 +96,19 @@ func (r *JSONLRecorder) writeRequestEntry(req *capture.CapturedRequest, requestI
 		RequestID: requestID,
 		Type:      "request",
 		Method:    req.Method,
-		URL:       req.URL,
+		URL:       r.redactor.Value(req.URL),
 		Host:      req.Host,
 		Path:      req.Path,
-		Headers:   flattenHeaders(req.Headers),
+		Headers:   flattenHeaders(r.redactor.Headers(req.Headers)),
 		BodyType:  string(req.BodyType),
-		BodyInfo:  req.BodyInfo,
-		BodyError: req.BodyError,
+		BodyInfo:  r.redactor.Value(req.BodyInfo),
+		BodyError: r.redactor.Value(req.BodyError),
 	}
 
-	// Include body if captured
+	// Include body if captured. Scrub the raw bytes BEFORE JSON parsing so
+	// known secret values are gone from every parsed form as well.
 	if len(req.Body) > 0 {
-		entry.Body = formatBody(req.Body, req.BodyType)
+		entry.Body = formatBody(r.redactor.Bytes(req.Body), req.BodyType)
 	}
 
 	r.writeEntry(entry)
@@ -112,16 +122,17 @@ func (r *JSONLRecorder) writeResponseEntry(resp *capture.CapturedResponse, reque
 		Type:       "response",
 		Status:     resp.Status,
 		StatusText: resp.StatusText,
-		Headers:    flattenHeaders(resp.Headers),
+		Headers:    flattenHeaders(r.redactor.Headers(resp.Headers)),
 		BodyType:   string(resp.BodyType),
-		BodyInfo:   resp.BodyInfo,
-		BodyError:  resp.BodyError,
+		BodyInfo:   r.redactor.Value(resp.BodyInfo),
+		BodyError:  r.redactor.Value(resp.BodyError),
 		DurationMS: resp.DurationMS,
 	}
 
-	// Include body if captured
+	// Include body if captured. Scrub the raw bytes BEFORE JSON parsing so
+	// known secret values are gone from every parsed form as well.
 	if len(resp.Body) > 0 {
-		entry.Body = formatBody(resp.Body, resp.BodyType)
+		entry.Body = formatBody(r.redactor.Bytes(resp.Body), resp.BodyType)
 	}
 
 	r.writeEntry(entry)

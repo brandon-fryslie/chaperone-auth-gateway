@@ -16,6 +16,7 @@ import (
 	"github.com/bmf/chaperone/internal/examine"
 	"github.com/bmf/chaperone/internal/mitm"
 	"github.com/bmf/chaperone/internal/recorder"
+	"github.com/bmf/chaperone/internal/redact"
 	"github.com/bmf/chaperone/internal/secrets"
 	"github.com/bmf/chaperone/internal/service"
 	"github.com/bmf/chaperone/internal/shutdown"
@@ -159,7 +160,6 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		config:      cfg,
 		logger:      logger,
 		shutdownMgr: shutdownMgr,
-		recorder:    recorder.NewRecorder(),
 		proxySecret: proxySecret,
 	}
 
@@ -168,6 +168,27 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	if len(opts) > 0 && opts[0] != nil {
 		options = opts[0]
 	}
+
+	// Get secret registry (if provided)
+	var secretRegistry *secrets.Registry
+	if options != nil && options.SecretRegistry != nil {
+		secretRegistry = options.SecretRegistry
+	}
+
+	// Recording redactor: every credential value this process holds is a
+	// value the recorder must scrub — the per-run proxy secret, configured
+	// placeholders, and every secret the registry has resolved (consulted at
+	// record time, so grant-fetched credentials are covered too).
+	// [LAW:single-enforcer]
+	staticSecrets := []string{proxySecret}
+	for _, svcCfg := range cfg.Services {
+		staticSecrets = append(staticSecrets, svcCfg.Placeholder)
+	}
+	redactSources := []redact.ValueSource{redact.Static(staticSecrets...)}
+	if secretRegistry != nil {
+		redactSources = append(redactSources, secretRegistry.ResolvedValues)
+	}
+	s.recorder = recorder.NewRecorder(redact.NewRedactor(redactSources...))
 
 	// Audit sink: prefer an injected logger (the daemon shares one trail across
 	// proxy + control plane) and let its injector own Close. Only when none is
@@ -192,12 +213,6 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		}
 	}
 	s.auditLogger = auditLogger
-
-	// Get secret registry (if provided)
-	var secretRegistry *secrets.Registry
-	if options != nil && options.SecretRegistry != nil {
-		secretRegistry = options.SecretRegistry
-	}
 
 	// Get auth registry (if provided)
 	var authRegistry *auth.Registry
@@ -250,11 +265,14 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	// 5. User-configurable strip handler (remove additional headers)
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(stripHandler(registry, logger))
 
-	// 6. Authentication injection
-	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(authHandler(registry, secretRegistry, authRegistry, auditLogger, logger))
-
-	// 7. HAR recording - request start
+	// 6. Recording - capture the request in its client-facing state, BEFORE
+	// injection, so the durable artifact never sees the real credential at
+	// all. The recorder's own redaction remains the backstop if this
+	// ordering ever regresses. [LAW:effects-at-boundaries]
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(recordRequestHandler(s.recorder))
+
+	// 7. Authentication injection
+	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(authHandler(registry, secretRegistry, authRegistry, auditLogger, logger))
 
 	// Configure response handler for HAR recording
 	proxy.OnResponse(ChaperoneRespCondition(registry)).DoFunc(recordResponseHandler(s.recorder))

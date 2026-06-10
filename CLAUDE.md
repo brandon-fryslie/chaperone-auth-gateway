@@ -151,9 +151,10 @@ Lets Claude Code activate a credential mid-session — without editing config or
 
 ## Traffic Capture & Recording
 - `internal/capture/` - Memory-safe HTTP capture: `Engine.CaptureRequest/CaptureResponse/CaptureEntry` clone bodies via `TeeReader` (always restoring the stream for downstream) and cap them at `maxBodySize`; streaming bodies capture metadata only. Recorders consume the captured types — they never touch live `http.Request`/`Response` bodies.
-- `internal/recorder/har.go` - HAR (HTTP Archive) recorder
-- `internal/recorder/jsonl.go` - JSONL (one transaction per line) recorder
-- `internal/recorder/multi.go` - Fan-out recorder that drives several recorders from one capture
+- `internal/redact/` - Single redaction policy for recordings (`Redactor`): credential-position headers (derived from `auth.KnownAuthHeaders` + Proxy-Authorization/Cookie/Set-Cookie) are replaced wholesale, and every secret value the process holds (proxy secret, placeholders, the secret registry's resolved cache via `ResolvedValues()`) is scrubbed from URLs/headers/bodies/error text. The `Redactor` zero value still enforces the positional policy, so an unredacted recorder is unconstructible.
+- `internal/recorder/har.go` - HAR (HTTP Archive) recorder; entries are redacted as they are built (in-memory archive is already clean)
+- `internal/recorder/jsonl.go` - JSONL (one transaction per line) recorder; entries redacted before writing, bodies scrubbed before JSON parsing
+- `internal/recorder/multi.go` - Fan-out recorder that drives several recorders from one capture (each format redacts itself)
 
 ## Run Mode (child-process spawning)
 - `internal/run/process.go` - `SpawnChild()`, `BuildProcessEnvironment()`, `ProcessResult.Wait` — start the child with proxy env vars and propagate its exit code
@@ -178,10 +179,10 @@ Lets Claude Code activate a credential mid-session — without editing config or
 0. Client → CONNECT with `Proxy-Authorization` → `proxyAuthConnectHandler` → 407 without the per-run secret; on success stamps the tunnel authenticated
 1. Client → CONNECT → `connectHandler` → decides MITM or passthrough
 2. If MITM: `policyHandler` → check allowed methods/paths/body size
-3. `authHandler` → fetch secret → apply strategy → **inject header**
-4. `recordRequestHandler` → HAR recording
+3. `recordRequestHandler` → snapshot the client-facing request for recording (BEFORE injection, so the recorded request never contains the real credential)
+4. `authHandler` → fetch secret → apply strategy → **inject header**
 5. Request sent to upstream
-6. `recordResponseHandler` → HAR recording
+6. `recordResponseHandler` → HAR recording (all recorded data passes through the `internal/redact` redactor)
 7. Response → Client
 
 ### Auth Injection Details (`authHandler` in handlers.go)
@@ -351,7 +352,8 @@ The codebase is organized by responsibility, not by layer:
 | `internal/examine/` | Auth discovery mode (passthrough logging) |
 | `internal/init/` | Config wizard with auto-detection |
 | `internal/log/` | Structured logging with redaction |
-| `internal/recorder/` | Traffic recording (HAR, JSONL, multi fan-out) |
+| `internal/recorder/` | Traffic recording (HAR, JSONL, multi fan-out); redacted at record time |
+| `internal/redact/` | Recording redaction policy (credential positions + known secret values) |
 | `internal/capture/` | Memory-safe HTTP request/response body capture for recording |
 | `internal/run/` | Run mode: spawn child process with injected proxy environment |
 | `internal/defaults/` | Built-in default services + env-var tuning |
@@ -375,11 +377,13 @@ Requests flow through handlers in order:
 1. `connectHandler` (`connect_handler.go`) - Decide MITM vs transparent tunnel
 2. `policyHandler` (`policy_handler.go`) - Check methods/paths/body size (fail fast); `dropHandler`/`stripHandler` apply drop/strip policy
 3. `securityStripAuthHandler` (`auth_handler.go`) - Strip client-supplied auth so it can't leak past the proxy
-4. `authHandler` (`auth_handler.go`) - Fetch secret, inject credential
-5. `recordRequestHandler` (`recording_handler.go`) - Recording (if enabled)
+4. `recordRequestHandler` (`recording_handler.go`) - Snapshot the client-facing (post-strip, pre-injection) request for recording
+5. `authHandler` (`auth_handler.go`) - Fetch secret, inject credential
 6. Forward to upstream
 7. `recordResponseHandler` - Response capture
 8. Return to client
+
+**Why record before injecting?** The durable artifact must never see the real credential; the recorder's redactor (`internal/redact`) is the backstop, the ordering is the guarantee.
 
 **Why fail-fast?** Policy rejection happens before credential injection for security.
 

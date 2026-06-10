@@ -8,6 +8,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/bmf/chaperone/internal/redact"
 )
 
 // HAREntry represents a single HTTP request/response pair in HAR format
@@ -155,19 +157,25 @@ type HARPageTimings struct {
 	Comment       string `json:"comment,omitempty"`
 }
 
-// Recorder records HTTP requests and responses in HAR format
+// Recorder records HTTP requests and responses in HAR format.
+// Every entry is redacted as it is built, so the in-memory archive never
+// holds credential material — not only the serialized output. [LAW:single-enforcer]
 type Recorder struct {
 	mu        sync.Mutex
 	entries   []HAREntry
 	startTime time.Time
 	maxBody   int64
+	redactor  redact.Redactor
 }
 
-// NewRecorder creates a new HAR recorder
-func NewRecorder() *Recorder {
+// NewRecorder creates a new HAR recorder. The redactor is taken by value:
+// its zero value still enforces the positional credential policy, so an
+// unredacted recorder cannot be constructed. [LAW:types-are-the-program]
+func NewRecorder(redactor redact.Redactor) *Recorder {
 	return &Recorder{
 		startTime: time.Now(),
 		maxBody:   100 * 1024, // 100KB max body size to prevent huge files
+		redactor:  redactor,
 	}
 }
 
@@ -179,7 +187,7 @@ func (r *Recorder) RecordRequest(req *http.Request, started time.Time) func(resp
 	// Create HAR request
 	harReq := HARRequest{
 		Method:      req.Method,
-		URL:         req.URL.String(),
+		URL:         r.redactor.Value(req.URL.String()),
 		HTTPVersion: fmt.Sprintf("HTTP/%d.%d", req.ProtoMajor, req.ProtoMinor),
 		Headers:     make([]HARHeader, 0, len(req.Header)),
 		HeadersSize: -1, // Unknown
@@ -187,7 +195,7 @@ func (r *Recorder) RecordRequest(req *http.Request, started time.Time) func(resp
 	}
 
 	// Add headers
-	for name, values := range req.Header {
+	for name, values := range r.redactor.Headers(req.Header) {
 		for _, value := range values {
 			harReq.Headers = append(harReq.Headers, HARHeader{
 				Name:  name,
@@ -214,15 +222,17 @@ func (r *Recorder) RecordRequest(req *http.Request, started time.Time) func(resp
 		}
 
 		if err != nil {
-			// Record error as response
+			// Record error as response. Error strings can embed request
+			// material (URLs, header echoes), so they pass through the
+			// redactor like every other recorded string.
 			entry.Response = HARResponse{
 				Status:      0,
-				StatusText:  err.Error(),
+				StatusText:  r.redactor.Value(err.Error()),
 				HTTPVersion: fmt.Sprintf("HTTP/%d.%d", req.ProtoMajor, req.ProtoMinor),
 				Content: HARContent{
 					Size:     0,
 					MIMEType: "text/plain",
-					Text:     err.Error(),
+					Text:     r.redactor.Value(err.Error()),
 				},
 				HeadersSize: 0,
 				BodySize:    -1,
@@ -243,7 +253,7 @@ func (r *Recorder) RecordRequest(req *http.Request, started time.Time) func(resp
 			}
 
 			// Add response headers
-			for name, values := range resp.Header {
+			for name, values := range r.redactor.Headers(resp.Header) {
 				for _, value := range values {
 					entry.Response.Headers = append(entry.Response.Headers, HARHeader{
 						Name:  name,
