@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/x509"
 	"fmt"
 	"os"
 	"strings"
@@ -24,6 +25,11 @@ type Config struct {
 type ServerConfig struct {
 	Address string `toml:"address"`
 	Port    int    `toml:"port"`
+	// UpstreamCAFile optionally pins outbound trust: when set, upstream server
+	// certificates on MITM'd connections are verified against ONLY the PEM
+	// certificates in this file instead of the system root store. Verification
+	// itself is always on and cannot be configured off.
+	UpstreamCAFile string `toml:"upstream_ca_file"`
 }
 
 // RunConfig defines settings for spawning and managing child processes in run mode.
@@ -100,11 +106,35 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// UpstreamCAPool loads the pinned upstream trust anchors named by
+// server.upstream_ca_file. Returns (nil, nil) when unset, meaning the system
+// root store applies.
+func (c *Config) UpstreamCAPool() (*x509.CertPool, error) {
+	if c.Server.UpstreamCAFile == "" {
+		return nil, nil
+	}
+	pemData, err := os.ReadFile(c.Server.UpstreamCAFile) //nolint:gosec // Path is operator-provided config value
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream_ca_file: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pemData) {
+		return nil, fmt.Errorf("upstream_ca_file %q contains no valid PEM certificates", c.Server.UpstreamCAFile)
+	}
+	return pool, nil
+}
+
 // Validate checks that the configuration is valid.
 func (c *Config) Validate() error {
 	// Address must always be 127.0.0.1
 	if c.Server.Address != "127.0.0.1" {
 		return fmt.Errorf("invalid address %q: must be 127.0.0.1", c.Server.Address)
+	}
+
+	// Pinned upstream trust anchors must load; a typo'd path discovered at
+	// request time would fail every injection. [LAW:verifiable-goals]
+	if _, err := c.UpstreamCAPool(); err != nil {
+		return err
 	}
 
 	// Port must always be 0 (OS-allocated)

@@ -121,8 +121,8 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -244,8 +244,8 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -368,8 +368,8 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -505,8 +505,8 @@ func TestAuditLogging(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -650,8 +650,8 @@ func TestAuditLogging(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -783,8 +783,8 @@ func TestAuditLogging(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -916,8 +916,8 @@ func TestAuditLogging(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -1044,8 +1044,8 @@ func TestAuditLogging(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)
@@ -1179,8 +1179,8 @@ func TestAuditLogging(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		})
 		err = proxyServer.Start()
 		require.NoError(t, err)

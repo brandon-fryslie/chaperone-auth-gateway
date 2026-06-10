@@ -129,8 +129,8 @@ func TestDropPatternBlocksRequests(t *testing.T) {
 				serviceRegistry,
 				certCache,
 				&proxy.MITMOptions{
-					SecretRegistry: secretRegistry,
-					AuthRegistry:   authRegistry,
+					UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+					AuthRegistry: authRegistry,
 				},
 			)
 
@@ -307,8 +307,8 @@ func TestStripHeadersRemovesHeaders(t *testing.T) {
 				serviceRegistry,
 				certCache,
 				&proxy.MITMOptions{
-					SecretRegistry: secretRegistry,
-					AuthRegistry:   authRegistry,
+					UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+					AuthRegistry: authRegistry,
 				},
 			)
 
@@ -460,8 +460,8 @@ func TestStripPreventsWrongCredentialLeakage(t *testing.T) {
 		serviceRegistry,
 		certCache,
 		&proxy.MITMOptions{
-			SecretRegistry: secretRegistry,
-			AuthRegistry:   authRegistry,
+			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
+			AuthRegistry: authRegistry,
 		},
 	)
 

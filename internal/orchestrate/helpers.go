@@ -110,6 +110,7 @@ func CreateProxy(ctx context.Context, cfg *config.Config, logger *slog.Logger, s
 				AuthRegistry:   result.AuthRegistry,
 				ProxySecret:    proxySecret,
 				AuditLogger:    auditLogger,
+				UpstreamCAs:    result.UpstreamCAs,
 			},
 		)
 		log.Info(ctx, "proxy server created with MITM support and authentication")

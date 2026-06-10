@@ -156,7 +156,7 @@ func TestBearerTokenAuthenticationEndToEnd(t *testing.T) {
 	secretRegistry, authRegistry := setupAuthRegistries()
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+		UpstreamCAs:    trustUpstreams(upstreamServer),
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
@@ -310,7 +310,7 @@ func TestCustomHeaderAuthenticationEndToEnd(t *testing.T) {
 	secretRegistry, authRegistry := setupAuthRegistries()
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+		UpstreamCAs:    trustUpstreams(upstreamServer),
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
@@ -449,7 +449,7 @@ func TestSecretFetchFailureReturns503(t *testing.T) {
 	secretRegistry, authRegistry := setupAuthRegistries()
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+		UpstreamCAs:    trustUpstreams(upstreamServer),
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
@@ -578,7 +578,7 @@ func TestUnknownStrategyReturns502(t *testing.T) {
 	secretRegistry, authRegistry := setupAuthRegistries()
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+		UpstreamCAs:    trustUpstreams(upstreamServer),
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
@@ -721,7 +721,7 @@ func TestConcurrentAuthenticatedRequests(t *testing.T) {
 	secretRegistry, authRegistry := setupAuthRegistries()
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+		UpstreamCAs:    trustUpstreams(upstreamServer),
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
@@ -888,7 +888,7 @@ func TestAuthStrategyPreservesClientHeaders(t *testing.T) {
 	secretRegistry, authRegistry := setupAuthRegistries()
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+		UpstreamCAs:    trustUpstreams(upstreamServer),
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,
@@ -1045,7 +1045,7 @@ func TestStrategyRegistryLookup(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+			UpstreamCAs:    trustUpstreams(upstreamServer),
 			SecretRegistry: secretRegistry,
 
 			AuthRegistry: authRegistry,
@@ -1165,7 +1165,7 @@ func TestStrategyRegistryLookup(t *testing.T) {
 		secretRegistry, authRegistry := setupAuthRegistries()
 
 		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+			UpstreamCAs:    trustUpstreams(upstreamServer),
 			SecretRegistry: secretRegistry,
 
 			AuthRegistry: authRegistry,
@@ -1304,7 +1304,7 @@ func TestAuthPreservesRequestBody(t *testing.T) {
 	secretRegistry, authRegistry := setupAuthRegistries()
 
 	proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
-
+		UpstreamCAs:    trustUpstreams(upstreamServer),
 		SecretRegistry: secretRegistry,
 
 		AuthRegistry: authRegistry,

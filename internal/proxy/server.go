@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"net"
@@ -48,8 +49,20 @@ func (s *Server) createHTTPServer() {
 	}
 }
 
-// configureTransport sets up the outbound transport for streaming-friendly connections.
-func configureTransport(proxy *goproxy.ProxyHttpServer) {
+// configureTransport sets up the outbound transport: trust policy first, then
+// streaming-friendly connection tuning. It is the single owner of proxy.Tr —
+// every constructor routes through here so no mode can ship goproxy's
+// insecure default outbound TLS config. [LAW:single-enforcer]
+func configureTransport(proxy *goproxy.ProxyHttpServer, upstreamCAs *x509.CertPool) {
+	// Replace goproxy's default TLS client config (InsecureSkipVerify=true)
+	// with the owned outbound-trust policy.
+	proxy.Tr.TLSClientConfig = upstreamTLSConfig(upstreamCAs)
+
+	// goproxy's HTTP/2 outbound leg bypasses proxy.Tr (and with it this trust
+	// policy), so it must stay disabled. Pinned explicitly rather than relying
+	// on the zero value. [LAW:no-silent-failure]
+	proxy.AllowHTTP2 = false
+
 	// Disable upstream proxy to avoid loops
 	proxy.Tr.Proxy = nil
 
@@ -84,8 +97,9 @@ func New(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager)
 	// Redirect goproxy's internal logging to our slog
 	proxy.Logger = &slogAdapter{logger: logger}
 
-	// Configure transport for streaming
-	configureTransport(proxy)
+	// Configure outbound trust + streaming transport (system roots; a
+	// transparent proxy never originates TLS itself, but the policy is uniform)
+	configureTransport(proxy, nil)
 
 	s.proxy = proxy
 
@@ -119,6 +133,12 @@ type MITMOptions struct {
 	// ([LAW:one-source-of-truth]); its lifecycle (Close) is owned by the injector.
 	// If nil, the proxy creates and owns its own logger from cfg.Audit.
 	AuditLogger audit.AuditLogger
+
+	// UpstreamCAs is the trust anchor set for verifying upstream server
+	// certificates on MITM'd connections. nil = system roots; non-nil = ONLY
+	// these roots (pinning). Verification is always on — there is no way to
+	// disable it. [LAW:types-are-the-program]
+	UpstreamCAs *x509.CertPool
 }
 
 // NewWithMITM creates a new proxy server with MITM capabilities.
@@ -196,8 +216,12 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	// Redirect goproxy's internal logging to our slog
 	proxy.Logger = &slogAdapter{logger: logger}
 
-	// Configure transport for streaming
-	configureTransport(proxy)
+	// Configure outbound trust + streaming transport
+	var upstreamCAs *x509.CertPool
+	if options != nil {
+		upstreamCAs = options.UpstreamCAs
+	}
+	configureTransport(proxy, upstreamCAs)
 
 	// Create certificate store adapter
 	certStore := NewGoproxyCertStore(certCache)
@@ -284,8 +308,10 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	// This ensures WARN/ERROR messages go to log file, not stdout
 	proxy.Logger = &slogAdapter{logger: logger}
 
-	// Configure transport for streaming
-	configureTransport(proxy)
+	// Configure outbound trust + streaming transport (examine MITMs every
+	// host, so its trust anchors are the system roots — pinning to one CA
+	// would make a discovery tool that can talk to exactly one service)
+	configureTransport(proxy, nil)
 
 	// Create certificate store adapter
 	certStore := NewGoproxyCertStore(certCache)

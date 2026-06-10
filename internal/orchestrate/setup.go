@@ -3,6 +3,7 @@ package orchestrate
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 
@@ -33,6 +34,9 @@ type SetupResult struct {
 	// built from the human-owned grantable universe. Non-nil even with no grantable
 	// config (an empty universe rejects every grant).
 	GrantEnforcer *grant.Enforcer
+	// UpstreamCAs holds the pinned outbound trust anchors from
+	// server.upstream_ca_file; nil means the system root store.
+	UpstreamCAs *x509.CertPool
 }
 
 // Setup initializes all registries and components based on configuration.
@@ -169,12 +173,20 @@ func Setup(ctx context.Context, cfg SetupConfig, ca *mitm.CA, logger *slog.Logge
 	// Create certificate cache
 	certCache := mitm.NewCertCache(ca, logger)
 
+	// Load pinned upstream trust anchors (fail fast — a daemon that cannot
+	// verify upstreams must not start)
+	upstreamCAs, err := cfg.Config.UpstreamCAPool()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load upstream trust anchors: %w", err)
+	}
+
 	return &SetupResult{
 		ServiceRegistry: registry,
 		SecretRegistry:  secretRegistry,
 		AuthRegistry:    authRegistry,
 		CertCache:       certCache,
 		GrantEnforcer:   grantEnforcer,
+		UpstreamCAs:     upstreamCAs,
 	}, nil
 }
 
