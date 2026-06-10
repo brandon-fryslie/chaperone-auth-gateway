@@ -128,7 +128,7 @@ func TestPolicyEnforcementImplementation(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("case_sensitive_path_matching", func(t *testing.T) {
+	t.Run("case_insensitive_path_matching", func(t *testing.T) {
 		enforcer := service.NewPolicyEnforcer(nil)
 
 		policy := &service.Policy{
@@ -138,8 +138,29 @@ func TestPolicyEnforcementImplementation(t *testing.T) {
 		err := enforcer.CheckPath("/v1/Chat", policy)
 		require.NoError(t, err)
 
-		// Different case should not match
+		// The documented case policy: every spelling a case-loose upstream
+		// would route identically gets the same verdict.
 		err = enforcer.CheckPath("/v1/chat", policy)
+		require.NoError(t, err)
+
+		// A genuinely different path still misses.
+		err = enforcer.CheckPath("/v1/chats", policy)
 		require.Error(t, err)
+	})
+
+	t.Run("normalization_before_matching", func(t *testing.T) {
+		enforcer := service.NewPolicyEnforcer(nil)
+
+		policy := &service.Policy{
+			AllowedPaths: []string{"/v1/*"},
+		}
+
+		// Dot-segments are resolved before comparison: this path IS /admin.
+		err := enforcer.CheckPath("/v1/../admin", policy)
+		require.Error(t, err)
+
+		// Duplicate slashes collapse; the path is /v1/chat.
+		err = enforcer.CheckPath("//v1//chat", policy)
+		require.NoError(t, err)
 	})
 }

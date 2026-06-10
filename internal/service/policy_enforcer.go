@@ -3,8 +3,6 @@ package service
 import (
 	"fmt"
 	"log/slog"
-	"path"
-	"strings"
 
 	"github.com/bmf/chaperone/internal/errors"
 )
@@ -24,7 +22,11 @@ func NewPolicyEnforcer(logger *slog.Logger) *Enforcer {
 	}
 }
 
-// CheckPath validates the request path against allowed patterns.
+// CheckPath validates the request path against allowed patterns. Matching goes
+// through pathPattern — the one matcher shared with drop rules and grant
+// narrowing — so the request path is normalized (dot-segments resolved,
+// duplicate slashes collapsed) and compared case-insensitively; "/v1/../admin"
+// is judged as "/admin", never as "inside /v1". [LAW:single-enforcer]
 func (e *Enforcer) CheckPath(requestPath string, policy *Policy) error {
 	if policy == nil {
 		return nil // no policy = allow all
@@ -37,7 +39,17 @@ func (e *Enforcer) CheckPath(requestPath string, policy *Policy) error {
 
 	// Check if path matches any allowed pattern
 	for _, pattern := range policy.AllowedPaths {
-		if matchPath(requestPath, pattern) {
+		pp, err := parsePathPattern(pattern)
+		if err != nil {
+			// Patterns are validated at the config/grant boundary, so this
+			// branch is unreachable in a correctly assembled daemon. If it
+			// fires anyway, fail closed (the pattern allows nothing) and say
+			// so on every request it dead-ends. [LAW:no-silent-failure]
+			e.logger.Error("unmatchable allowed_paths pattern; treating as no match",
+				"pattern", pattern, "error", err)
+			continue
+		}
+		if pp.matches(requestPath) {
 			return nil
 		}
 	}
@@ -45,6 +57,7 @@ func (e *Enforcer) CheckPath(requestPath string, policy *Policy) error {
 	// Path not allowed
 	e.logger.Warn("path not allowed by policy",
 		"path", requestPath,
+		"normalized_path", normalizePath(requestPath),
 		"allowed_paths", policy.AllowedPaths)
 
 	return &errors.PolicyError{
@@ -112,30 +125,4 @@ func (e *Enforcer) CheckBodySize(size int64, policy *Policy) error {
 	}
 
 	return nil
-}
-
-// matchPath checks if a request path matches an allowed path pattern.
-// Supports:
-// - Exact matching: /v1/chat matches only /v1/chat
-// - Wildcard matching: /v1/* matches /v1/chat, /v1/models, etc.
-// Path matching is case-sensitive (HTTP paths are case-sensitive).
-func matchPath(requestPath, pattern string) bool {
-	// Exact match
-	if requestPath == pattern {
-		return true
-	}
-
-	// Wildcard match
-	if strings.HasSuffix(pattern, "/*") {
-		prefix := strings.TrimSuffix(pattern, "*")
-		return strings.HasPrefix(requestPath, prefix)
-	}
-
-	// Use path.Match for more complex patterns if needed
-	matched, err := path.Match(pattern, requestPath)
-	if err != nil {
-		return false
-	}
-
-	return matched
 }

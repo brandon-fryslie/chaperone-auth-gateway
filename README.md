@@ -57,7 +57,7 @@ Applications never see or handle API keys - Chaperone injects them transparently
 ### 📋 Policy Enforcement
 
 - **Method Whitelisting** - Allow only specific HTTP methods (GET, POST, etc.)
-- **Path Whitelisting** - URL pattern matching with wildcards (`/api/*`, `/v1/**`)
+- **Path Whitelisting** - Exact paths or subtree wildcards (`/v1/chat`, `/api/*`); request paths are normalized and matched case-insensitively
 - **Body Size Limits** - Request body size limits (default 10MB)
 - **Drop Patterns** - Block requests matching specific URL patterns (returns 403)
 - **Header Stripping** - Remove specified headers from requests
@@ -583,13 +583,15 @@ Requests with other methods return `403 Forbidden`.
 #### Allowed Paths
 
 ```toml
-allowed_paths = ["/v1/*", "/api/**"]
+allowed_paths = ["/v1/*", "/admin/health"]
 ```
 
-**Pattern syntax:**
-- `*` - Single path segment (e.g., `/api/*` matches `/api/users` but not `/api/users/123`)
-- `**` - Any depth (e.g., `/api/**` matches `/api/users/123/posts/456`)
-- Patterns are tested in order; first match wins
+**Pattern syntax** (one vocabulary, shared with `drop` paths and grant scopes):
+- `/exact/path` - Matches exactly that path
+- `/prefix/*` - Matches every path **below** the prefix, at any depth (`/v1/*` matches `/v1/chat` and `/v1/chat/completions`, but not `/v1` itself)
+- Anything else (`**`, mid-pattern `*`, `?`) is rejected at startup; patterns must be written in canonical form (leading `/`, no duplicate slashes, no dot-segments, no trailing slash)
+
+**Match semantics:** the request path is normalized before comparison — dot-segments resolved, duplicate slashes collapsed, trailing slash dropped — so `/v1/../admin` is judged as `/admin`, never as "inside `/v1`". Comparison is case-insensitive: every spelling a case-loose upstream would route identically gets the same verdict.
 
 Requests not matching any pattern return `403 Forbidden`.
 
@@ -606,6 +608,8 @@ Requests exceeding limit return `413 Request Entity Too Large`.
 ```toml
 drop = ["*/admin/*", "*/internal/*", "*/debug"]
 ```
+
+A drop pattern is `host/path`: the host part supports wildcards (`*`, `*.example.com`, bare domain = itself plus subdomains); the path part uses the same vocabulary, normalization, and case policy as `allowed_paths`, so a request can never be "inside" a drop rule and "outside" the same spelling in an allowlist. A pattern with no path part drops every path on that host.
 
 Requests matching any drop pattern return `403 Forbidden` immediately (before credential injection).
 

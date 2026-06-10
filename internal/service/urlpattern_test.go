@@ -4,6 +4,15 @@ import (
 	"testing"
 )
 
+func mustParseURLPattern(t *testing.T, pattern string) *URLPattern {
+	t.Helper()
+	p, err := ParseURLPattern(pattern)
+	if err != nil {
+		t.Fatalf("ParseURLPattern(%q) failed: %v", pattern, err)
+	}
+	return p
+}
+
 func TestURLPattern_HostMatching(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -37,7 +46,7 @@ func TestURLPattern_HostMatching(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewURLPattern(tt.pattern)
+			p := mustParseURLPattern(t, tt.pattern)
 			result := p.Matches(tt.host, "")
 			if result != tt.expected {
 				t.Errorf("URLPattern(%q).Matches(%q, '') = %v, want %v",
@@ -47,6 +56,10 @@ func TestURLPattern_HostMatching(t *testing.T) {
 	}
 }
 
+// Path matching goes through the shared pathPattern vocabulary (exact path or
+// "<prefix>/*" subtree) under the one documented policy: request paths are
+// normalized (dot-segments, duplicate slashes, trailing slash) and compared
+// case-insensitively — identical to allowed_paths matching.
 func TestURLPattern_PathMatching(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -62,46 +75,55 @@ func TestURLPattern_PathMatching(t *testing.T) {
 		// Exact path matching
 		{"exact path match", "example.com/api", "example.com", "/api", true},
 		{"exact path no match", "example.com/api", "example.com", "/users", false},
-		{"exact path with trailing", "example.com/api/users", "example.com", "/api/users", true},
+		{"exact path deep", "example.com/api/users", "example.com", "/api/users", true},
 
-		// Single-level wildcard (*)
-		{"single wildcard matches one level", "example.com/api/*", "example.com", "/api/users", true},
-		{"single wildcard matches different segment", "example.com/api/*", "example.com", "/api/posts", true},
-		{"single wildcard no match deep path", "example.com/api/*", "example.com", "/api/users/123", false},
-		{"single wildcard no match different prefix", "example.com/api/*", "example.com", "/users/123", false},
-		{"wildcard in middle", "example.com/api/*/users", "example.com", "/api/v1/users", true},
-		{"wildcard in middle no match", "example.com/api/*/users", "example.com", "/api/v1/posts", false},
+		// Subtree wildcard: matches every path BELOW the prefix, at any depth
+		{"subtree matches one level", "example.com/api/*", "example.com", "/api/users", true},
+		{"subtree matches deep path", "example.com/api/*", "example.com", "/api/users/123", true},
+		{"subtree no match prefix itself", "example.com/api/*", "example.com", "/api", false},
+		{"subtree no match different prefix", "example.com/api/*", "example.com", "/users/123", false},
+		{"subtree no match sibling prefix", "example.com/api/*", "example.com", "/api2/users", false},
+		{"root subtree matches everything", "example.com/*", "example.com", "/anything/at/all", true},
 
-		// Multi-level wildcard (**)
-		{"double wildcard at end", "example.com/api/**", "example.com", "/api/users", true},
-		{"double wildcard matches deep", "example.com/api/**", "example.com", "/api/users/123/posts", true},
-		{"double wildcard matches immediate", "example.com/api/**", "example.com", "/api", true},
-		{"double wildcard no match wrong prefix", "example.com/api/**", "example.com", "/users", false},
+		// Normalization: the matcher judges the path an RFC-3986 router resolves
+		{"dot-segment escape does not match", "example.com/api/*", "example.com", "/api/../admin", false},
+		{"dot-segment within subtree matches", "example.com/api/*", "example.com", "/api/x/../users", true},
+		{"duplicate slashes collapse", "example.com/api/*", "example.com", "//api//users", true},
+		{"trailing slash drops", "example.com/api/users", "example.com", "/api/users/", true},
 
-		// Double wildcard with suffix
-		{"double wildcard with suffix", "example.com/**/index.html", "example.com", "/index.html", true},
-		{"double wildcard with suffix deep", "example.com/**/index.html", "example.com", "/api/index.html", true},
-		{"double wildcard with suffix very deep", "example.com/**/index.html", "example.com", "/api/v1/docs/index.html", true},
-		{"double wildcard with suffix no match", "example.com/**/index.html", "example.com", "/api/other.html", false},
-
-		// Double wildcard in middle
-		{"double wildcard in middle", "example.com/api/**/users", "example.com", "/api/users", true},
-		{"double wildcard in middle with intermediate", "example.com/api/**/users", "example.com", "/api/v1/users", true},
-		{"double wildcard in middle deep", "example.com/api/**/users", "example.com", "/api/v1/internal/users", true},
-		{"double wildcard in middle no match suffix", "example.com/api/**/users", "example.com", "/api/v1/posts", false},
-
-		// Edge cases
-		{"pattern with multiple wildcards", "example.com/*/api/*", "example.com", "/v1/api/users", true},
-		{"pattern with multiple wildcards no match", "example.com/*/api/*", "example.com", "/v1/users", false},
+		// Case-insensitive: a drop rule cannot be bypassed by case tricks
+		{"case variant still dropped", "example.com/admin/*", "example.com", "/Admin/keys", true},
+		{"pattern case folded too", "example.com/Admin/*", "example.com", "/admin/keys", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewURLPattern(tt.pattern)
+			p := mustParseURLPattern(t, tt.pattern)
 			result := p.Matches(tt.host, tt.path)
 			if result != tt.expected {
 				t.Errorf("URLPattern(%q).Matches(%q, %q) = %v, want %v",
 					tt.pattern, tt.host, tt.path, result, tt.expected)
+			}
+		})
+	}
+}
+
+// A drop rule outside the vocabulary must not construct: drop is a deny
+// control, and a rule that silently failed to match would fail open.
+func TestURLPattern_RejectsUnsupportedPatterns(t *testing.T) {
+	for _, pattern := range []string{
+		"example.com/**",            // segment globs are not part of the vocabulary
+		"example.com/**/index.html", // ditto
+		"example.com/api/*/users",   // mid-pattern wildcard
+		"example.com/*/api/*",       // ditto
+		"example.com/api/?",         // glob metachar
+		"example.com/api/",          // non-canonical: trailing slash
+		"example.com//api",          // non-canonical: duplicate slash
+		"example.com/api/../admin",  // non-canonical: dot-segment
+	} {
+		t.Run(pattern, func(t *testing.T) {
+			if _, err := ParseURLPattern(pattern); err == nil {
+				t.Errorf("ParseURLPattern(%q) succeeded, want error", pattern)
 			}
 		})
 	}
@@ -120,8 +142,7 @@ func TestURLPattern_CombinedMatching(t *testing.T) {
 		{"wildcard host with path no match host", "*.example.com/api", "other.com", "/api", false},
 		{"wildcard host with path no match path", "*.example.com/api", "api.example.com", "/users", false},
 
-		{"wildcard host with wildcard path", "*.example.com/api/*", "api.example.com", "/api/users", true},
-		{"wildcard host with double wildcard path", "*.example.com/**/index.html", "docs.example.com", "/guide/index.html", true},
+		{"wildcard host with subtree path", "*.example.com/api/*", "api.example.com", "/api/users", true},
 
 		// Real-world examples
 		{"anthropic block all", "anthropic.com", "anthropic.com", "/api/chat", true},
@@ -133,7 +154,7 @@ func TestURLPattern_CombinedMatching(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewURLPattern(tt.pattern)
+			p := mustParseURLPattern(t, tt.pattern)
 			result := p.Matches(tt.host, tt.path)
 			if result != tt.expected {
 				t.Errorf("URLPattern(%q).Matches(%q, %q) = %v, want %v",
@@ -151,23 +172,14 @@ func TestURLPattern_EdgeCases(t *testing.T) {
 		path     string
 		expected bool
 	}{
-		// Empty and edge cases
-		{"empty path in URL", "example.com/api", "example.com", "", false},
-		{"path without leading slash", "example.com/api", "example.com", "api", true}, // Should normalize
-		{"pattern without leading slash", "example.com/api", "example.com", "/api", true},
-
-		// Trailing slashes (path.Clean handles these)
-		{"trailing slash in pattern", "example.com/api/", "example.com", "/api", true},
-		{"trailing slash in path", "example.com/api", "example.com", "/api/", true},
-
-		// Double slashes (path.Clean handles these)
-		{"double slash in pattern", "example.com//api", "example.com", "/api", true},
-		{"double slash in path", "example.com/api", "example.com", "//api", true},
+		{"empty path normalizes to root", "example.com/api", "example.com", "", false},
+		{"empty path matches exact root", "example.com/", "example.com", "", true},
+		{"path without leading slash", "example.com/api", "example.com", "api", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := NewURLPattern(tt.pattern)
+			p := mustParseURLPattern(t, tt.pattern)
 			result := p.Matches(tt.host, tt.path)
 			if result != tt.expected {
 				t.Errorf("URLPattern(%q).Matches(%q, %q) = %v, want %v",

@@ -10,6 +10,7 @@ import (
 
 	"github.com/bmf/chaperone/internal/filetrust"
 	"github.com/bmf/chaperone/internal/secrets"
+	"github.com/bmf/chaperone/internal/service"
 )
 
 // Config represents the complete application configuration.
@@ -174,6 +175,20 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("service %q: placeholder must be at least 8 characters for security (got %d)", name, len(svc.Placeholder))
 		}
 
+		// Path-gated policy patterns must parse in the one matcher vocabulary;
+		// an unmatchable allow entry is a dead grant of nothing and an
+		// unmatchable drop entry is an unenforceable deny — both are config
+		// errors the operator must hear at startup, not at request time.
+		// [LAW:no-silent-failure]
+		if err := service.ValidatePathPatterns(svc.AllowedPaths); err != nil {
+			return fmt.Errorf("service %q: allowed_paths: %w", name, err)
+		}
+		for _, d := range svc.Drop {
+			if _, err := service.ParseURLPattern(d); err != nil {
+				return fmt.Errorf("service %q: drop: %w", name, err)
+			}
+		}
+
 		// Validate RunConfig if present
 		if svc.Run != nil {
 			if svc.Run.Command == "" {
@@ -222,6 +237,9 @@ func (g *GrantableConfig) validate(index int) error {
 	}
 	if g.MaxBodyBytes < 0 {
 		return fmt.Errorf("grantable[%d]: max_body_bytes must not be negative (got %d)", index, g.MaxBodyBytes)
+	}
+	if err := service.ValidatePathPatterns(g.AllowedPaths); err != nil {
+		return fmt.Errorf("grantable[%d]: allowed_paths: %w", index, err)
 	}
 	return nil
 }

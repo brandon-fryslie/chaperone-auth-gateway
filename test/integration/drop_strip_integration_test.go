@@ -50,9 +50,21 @@ func TestDropPatternBlocksRequests(t *testing.T) {
 			shouldBeBlocked: true,
 		},
 		{
-			name:            "drop with wildcard",
-			dropPatternFunc: func(host string) string { return host + "/**/sensitive" },
+			name:            "drop subtree wildcard at any depth",
+			dropPatternFunc: func(host string) string { return host + "/api/*" },
 			requestPath:     "/api/v1/sensitive",
+			shouldBeBlocked: true,
+		},
+		{
+			name:            "drop is not case-bypassable",
+			dropPatternFunc: func(host string) string { return host + "/blocked" },
+			requestPath:     "/Blocked",
+			shouldBeBlocked: true,
+		},
+		{
+			name:            "drop matches the normalized path",
+			dropPatternFunc: func(host string) string { return host + "/blocked" },
+			requestPath:     "/api/../blocked",
 			shouldBeBlocked: true,
 		},
 		{

@@ -102,7 +102,10 @@ The request pipeline is split into one file per concern. `handlers.go` is now on
 - `internal/service/registry_impl.go` - Implementation (register/lookup services)
 - `internal/service/matcher.go` - `ShouldMITM()` - check if host needs MITM
 - `internal/service/policy.go` - Policy struct (allowed methods/paths, max body size)
-- `internal/service/policy_enforcer.go` - Policy validation logic
+- `internal/service/policy_enforcer.go` - Policy validation logic (`CheckPath` matches via `pathPattern`)
+- `internal/service/pathmatch.go` - **THE path-pattern vocabulary and matcher** (never hand-roll a second path match). One small language — exact path or `<prefix>/*` (subtree, any depth) — consumed by the allow list (`CheckPath`), the drop list (`URLPattern`), and grant containment (`Narrows`). One documented match policy: request paths are normalized first (dot-segments resolved, duplicate slashes collapsed, trailing slash dropped — `/v1/../admin` is judged as `/admin`) and compared case-insensitively. Patterns must be canonical (leading `/`, already clean); `ValidatePathPatterns` is the rule the entry boundaries apply — `config.Validate` (services + grantable bounds) and `grant.Enforcer.Authorize` — so an unmatchable pattern fails at the door; runtime parse failure fails closed
+- `internal/service/urlpattern.go` - Drop-rule matcher over (host, path): host wildcards (`*.example.com`, bare domain = self + subdomains), path part is a `pathPattern`. `ParseURLPattern` errors on anything outside the vocabulary — an unenforceable deny rule must not construct
+- `internal/service/narrow.go` - `Narrows()` — grant-scope containment (methods/paths/body), path containment decided over the same folded, normalized form the matcher uses
 
 ## Examine Mode (Auth Discovery)
 - `internal/examine/handlers.go` - goproxy handlers (`ConnectHandler`/`RequestHandler`/`ResponseHandler`) — always-MITM passthrough
@@ -246,6 +249,10 @@ placeholder = "chap_openai_xxxxxxxx"  # App uses this, Chaperone swaps for real 
 
 [services.policy]
 allowed_methods = ["GET", "POST"]
+# Exact path or "<prefix>/*" (subtree, any depth) — the one vocabulary shared
+# with drop paths and grant scopes. Request paths are normalized before
+# comparison and matched case-insensitively; non-canonical or glob patterns
+# are rejected at startup.
 allowed_paths = ["/v1/*"]
 max_body_bytes = 1048576
 ```
