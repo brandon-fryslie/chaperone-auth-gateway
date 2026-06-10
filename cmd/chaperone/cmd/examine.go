@@ -413,7 +413,10 @@ func runExamine(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to generate proxy secret: %w", err)
 	}
 
-	server := proxy.NewExamineProxy(cfg, slog.Default(), shutdownMgr, certCache, examineLogger, rec, sentinelChan, proxySecret)
+	server, err := proxy.NewExamineProxy(cfg, slog.Default(), shutdownMgr, certCache, examineLogger, rec, sentinelChan, proxySecret)
+	if err != nil {
+		return fmt.Errorf("failed to create examine proxy: %w", err)
+	}
 
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("failed to start examine proxy: %w", err)

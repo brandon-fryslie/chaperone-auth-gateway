@@ -225,14 +225,20 @@ export OPENAI_API_KEY=sk-your-key-here
 
 ### Configure Your Application
 
-Set the proxy environment variable:
+Proxy access is gated by a per-run credential — anything that can reach the
+listener would otherwise get real credentials injected for free. On startup,
+inject mode prints the exact lines to export:
 
-```bash
-export HTTPS_PROXY=http://127.0.0.1:4010
-
-# Or for Unix socket mode
-export HTTPS_PROXY=http://unix:/tmp/chaperone.sock
 ```
+Proxy listening on: 127.0.0.1:4010
+Access requires this per-run proxy credential (regenerated on every start):
+  export HTTP_PROXY=http://chaperone:<per-run-secret>@127.0.0.1:4010
+  export HTTPS_PROXY=http://chaperone:<per-run-secret>@127.0.0.1:4010
+```
+
+Copy those lines into the shell that runs your application. Requests without
+the credential receive `407 Proxy Authentication Required` and nothing is
+injected. (`chaperone run` wires this automatically into the child process.)
 
 ### Trust the CA Certificate (First Time Only)
 

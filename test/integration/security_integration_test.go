@@ -120,7 +120,7 @@ func TestPlaceholderEnforcement(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -134,7 +134,7 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -243,7 +243,7 @@ func TestPlaceholderEnforcement(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -257,7 +257,7 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -367,7 +367,7 @@ func TestPlaceholderEnforcement(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -381,7 +381,7 @@ func TestPlaceholderEnforcement(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -504,7 +504,7 @@ func TestAuditLogging(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -518,7 +518,7 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -649,7 +649,7 @@ func TestAuditLogging(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -663,7 +663,7 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -782,7 +782,7 @@ func TestAuditLogging(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -796,7 +796,7 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -915,7 +915,7 @@ func TestAuditLogging(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -929,7 +929,7 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -1043,7 +1043,7 @@ func TestAuditLogging(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -1057,7 +1057,7 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),
@@ -1178,7 +1178,7 @@ func TestAuditLogging(t *testing.T) {
 
 		secretRegistry, authRegistry := setupAuthRegistries()
 
-		proxyServer := proxy.NewWithMITM(cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
+		proxyServer := newGatedMITMProxy(t, cfg, logger, shutdownMgr, registry, certCache, &proxy.MITMOptions{
 			UpstreamCAs: trustUpstreams(upstreamServer), SecretRegistry: secretRegistry,
 			AuthRegistry: authRegistry,
 		})
@@ -1192,7 +1192,7 @@ func TestAuditLogging(t *testing.T) {
 		certPool := x509.NewCertPool()
 		certPool.AppendCertsFromPEM(caCertPEM)
 
-		proxyURL, dialer := proxy.GetProxyURL(cfg)
+		proxyURL, dialer := gatedProxyURL(t, proxyServer)
 		client := &http.Client{
 			Transport: &http.Transport{
 				Proxy:           http.ProxyURL(proxyURL),

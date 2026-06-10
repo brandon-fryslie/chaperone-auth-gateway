@@ -124,10 +124,6 @@ type MITMOptions struct {
 	// If nil, authentication will be skipped (backward compatibility).
 	AuthRegistry *auth.Registry
 
-	// ProxySecret is the per-run secret for proxy Basic auth.
-	// If empty, proxy authentication is disabled (INSECURE).
-	ProxySecret string
-
 	// AuditLogger, if provided, is the audit sink the proxy writes to. Injecting it
 	// lets the daemon share ONE audit trail across the proxy and the control plane
 	// ([LAW:one-source-of-truth]); its lifecycle (Close) is owned by the injector.
@@ -144,8 +140,17 @@ type MITMOptions struct {
 // NewWithMITM creates a new proxy server with MITM capabilities.
 // It accepts a service registry for domain matching and a certificate cache
 // for dynamic certificate generation.
+//
+// proxySecret gates every path into the injecting pipeline and is required:
+// a proxy that injects real credentials must never be reachable without
+// authentication, so "gate absent" is not constructible — an empty secret is
+// a loud error, never a silently ungated server. [LAW:no-silent-failure]
+//
 // Optional MITMOptions can be passed to customize behavior (mainly for testing).
-func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, registry service.ServiceRegistry, certCache *mitm.CertCache, opts ...*MITMOptions) *Server {
+func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, registry service.ServiceRegistry, certCache *mitm.CertCache, proxySecret string, opts ...*MITMOptions) (*Server, error) {
+	if proxySecret == "" {
+		return nil, fmt.Errorf("refusing to start credential-injecting proxy without a proxy access secret: generate one with GenerateProxySecret()")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -155,6 +160,7 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		logger:      logger,
 		shutdownMgr: shutdownMgr,
 		recorder:    recorder.NewRecorder(),
+		proxySecret: proxySecret,
 	}
 
 	// Get options (if provided)
@@ -199,13 +205,6 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		authRegistry = options.AuthRegistry
 	}
 
-	// Get proxy secret (if provided)
-	var proxySecret string
-	if options != nil && options.ProxySecret != "" {
-		proxySecret = options.ProxySecret
-		s.proxySecret = proxySecret
-	}
-
 	// Create policy enforcer
 	enforcer := service.NewPolicyEnforcer(logger)
 
@@ -226,20 +225,14 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 	// Create certificate store adapter
 	certStore := NewGoproxyCertStore(certCache)
 
-	// Configure CONNECT handler (MITM vs transparent tunnel decision)
-	// Wrap with proxy auth if secret is configured
-	baseConnectHandler := connectHandler(registry, certStore, logger)
-	if proxySecret != "" {
-		proxy.OnRequest().HandleConnectFunc(proxyAuthConnectHandler(proxySecret, baseConnectHandler))
-	} else {
-		proxy.OnRequest().HandleConnectFunc(baseConnectHandler)
-	}
+	// Configure CONNECT handler (MITM vs transparent tunnel decision),
+	// always wrapped by the proxy-auth gate. The gate is wiring, not a mode:
+	// it exists on every constructed server. [LAW:dataflow-not-control-flow]
+	proxy.OnRequest().HandleConnectFunc(proxyAuthConnectHandler(proxySecret, connectHandler(registry, certStore, logger)))
 
 	// Configure request handlers in order:
 	// 0. Proxy authentication (MUST be first - reject unauthorized requests)
-	if proxySecret != "" {
-		proxy.OnRequest().DoFunc(proxyAuthHandler(proxySecret))
-	}
+	proxy.OnRequest().DoFunc(proxyAuthHandler(proxySecret))
 
 	// 1. Request ID setup (so all handlers have request ID for logging)
 	proxy.OnRequest(ChaperoneCondition(registry)).DoFunc(requestIDHandler())
@@ -276,7 +269,7 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 		shutdownMgr.Register(s.Stop)
 	}
 
-	return s
+	return s, nil
 }
 
 // NewExamineProxy creates a passthrough MITM proxy for examining requests.
@@ -284,8 +277,14 @@ func NewWithMITM(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.
 // This mode is used by 'chaperone examine' to help users discover how authentication
 // credentials are passed in requests.
 // If recorder is provided, it will capture traffic in HAR format.
-// If proxySecret is provided, proxy requires authentication.
-func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger, rec *recorder.Recorder, sentinelChan chan struct{}, proxySecret string) *Server {
+//
+// proxySecret is required: examine MITMs every host and sees live credentials
+// in plaintext, so an ungated examine proxy is refused at construction just
+// like an ungated injecting proxy. [LAW:no-silent-failure]
+func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutdown.Manager, certCache *mitm.CertCache, examineLogger *examine.Logger, rec *recorder.Recorder, sentinelChan chan struct{}, proxySecret string) (*Server, error) {
+	if proxySecret == "" {
+		return nil, fmt.Errorf("refusing to start examine proxy without a proxy access secret: generate one with GenerateProxySecret()")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -316,19 +315,12 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 	// Create certificate store adapter
 	certStore := NewGoproxyCertStore(certCache)
 
-	// Configure CONNECT handler - MITM ALL connections (no filtering)
-	// Wrap with proxy auth if secret is configured
-	baseConnectHandler := examine.ConnectHandler(certStore, logger)
-	if proxySecret != "" {
-		proxy.OnRequest().HandleConnectFunc(proxyAuthConnectHandler(proxySecret, baseConnectHandler))
-	} else {
-		proxy.OnRequest().HandleConnectFunc(baseConnectHandler)
-	}
+	// Configure CONNECT handler - MITM ALL connections (no filtering),
+	// always wrapped by the proxy-auth gate. [LAW:dataflow-not-control-flow]
+	proxy.OnRequest().HandleConnectFunc(proxyAuthConnectHandler(proxySecret, examine.ConnectHandler(certStore, logger)))
 
-	// Add proxy authentication handler FIRST (if configured)
-	if proxySecret != "" {
-		proxy.OnRequest().DoFunc(proxyAuthHandler(proxySecret))
-	}
+	// Proxy authentication handler runs FIRST on the request path
+	proxy.OnRequest().DoFunc(proxyAuthHandler(proxySecret))
 
 	// Add request ID handler - provides correlation colors for all requests
 	proxy.OnRequest().DoFunc(requestIDHandler())
@@ -355,7 +347,7 @@ func NewExamineProxy(cfg *config.Config, logger *slog.Logger, shutdownMgr *shutd
 		shutdownMgr.Register(s.Stop)
 	}
 
-	return s
+	return s, nil
 }
 
 // Start starts the proxy server.

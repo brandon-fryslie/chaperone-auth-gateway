@@ -9,6 +9,7 @@ import (
 	"github.com/bmf/chaperone/internal/config"
 	"github.com/bmf/chaperone/internal/log"
 	"github.com/bmf/chaperone/internal/orchestrate"
+	"github.com/bmf/chaperone/internal/proxy"
 	"github.com/bmf/chaperone/internal/shutdown"
 	"github.com/spf13/cobra"
 )
@@ -107,9 +108,19 @@ func runInject(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Generate the per-run proxy access secret. The injecting proxy refuses to
+	// start without one — anything that can reach the listener would otherwise
+	// get real credentials attached for free.
+	proxySecret, err := proxy.GenerateProxySecret()
+	if err != nil {
+		return fmt.Errorf("failed to generate proxy secret: %w", err)
+	}
+
 	// Create proxy server with MITM support or transparent mode
-	// Inject mode has no proxy auth - it's for manual use where user sets HTTP_PROXY
-	proxyServer := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, "", auditLogger)
+	proxyServer, err := orchestrate.CreateProxy(ctx, cfg, slog.Default(), shutdownMgr, result, proxySecret, auditLogger)
+	if err != nil {
+		return err
+	}
 
 	// Start proxy server
 	if err := proxyServer.Start(); err != nil {
@@ -117,6 +128,14 @@ func runInject(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info(ctx, "proxy server started successfully")
+
+	// Surface the credentialed proxy URL — it is the only way through the gate,
+	// and it changes every run.
+	proxyURL := proxyServer.ProxyURL()
+	fmt.Printf("\nProxy listening on: %s\n", proxyServer.Addr())
+	fmt.Printf("Access requires this per-run proxy credential (regenerated on every start):\n")
+	fmt.Printf("  export HTTP_PROXY=%s\n", proxyURL)
+	fmt.Printf("  export HTTPS_PROXY=%s\n\n", proxyURL)
 
 	// Bring up the localhost-only control plane so grants can be applied/revoked
 	// at runtime without a restart.
