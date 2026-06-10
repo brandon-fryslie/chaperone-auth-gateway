@@ -123,6 +123,22 @@ receive them, so a config writable by another local user would let them
 redirect your credentials. The error message includes the `chmod`/`chown` fix;
 there is no warning-and-continue mode.
 
+**Shipped today — secret file trust gate:** the `file:` secret provider
+refuses a secret file with *any* group/world permission bit (read included —
+the file is the credential value itself, so another user reading it is as bad
+as writing it), a file owned by a different user, or a non-regular file. A
+symlinked path is judged by the target actually read, and the permission check
+stats the open file handle, so the verified file is the file whose bytes are
+used. Both gates share one trust check (`internal/filetrust`); the config gate
+allows group/world *read* because a config holds references, not values.
+
+**Shipped today — one secret value contract:** every fetched secret (env,
+file, keychain) is normalized at the secret registry — the single boundary all
+fetches cross: surrounding whitespace/newlines are trimmed (a `printf`'d file
+or the keychain tool's output carries a trailing newline that is transport
+convention, not part of the secret) and a value that is empty after trimming
+is a loud not-found error, never an injected empty credential.
+
 ---
 
 ### Layer 4: Network Hardening

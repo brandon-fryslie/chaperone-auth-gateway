@@ -3,7 +3,6 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,7 +30,8 @@ func writeConfigWithMode(t *testing.T, content string, mode os.FileMode) string 
 // permission/ownership gate: a config any other local user could write is
 // refused with a loud error before parsing. Every mode loads through
 // config.Load, so rejection here IS startup failure for inject/run/examine/
-// check alike.
+// check alike. The trust decision itself lives in internal/filetrust and is
+// exhaustively tested there; these tests prove Load is wired through it.
 func TestLoad_RejectsUntrustedConfig(t *testing.T) {
 	t.Run("world-writable (0666) rejected", func(t *testing.T) {
 		path := writeConfigWithMode(t, minimalConfig, 0o666)
@@ -79,53 +79,5 @@ func TestLoad_RejectsUntrustedConfig(t *testing.T) {
 		path := writeConfigWithMode(t, minimalConfig, 0o644)
 		_, err := Load(path)
 		require.NoError(t, err)
-	})
-}
-
-// fakeOwnerInfo wraps a real FileInfo but reports a chosen owner uid: tests
-// cannot chown a file to another user without root, but the trust decision is
-// pure over (FileInfo, uid), so ownership rejection is provable with a fake.
-type fakeOwnerInfo struct {
-	os.FileInfo
-	uid uint32
-}
-
-func (f fakeOwnerInfo) Sys() any { return &syscall.Stat_t{Uid: f.uid} }
-
-// fakeNoSysInfo reports a stat shape the trust check cannot interpret.
-type fakeNoSysInfo struct{ os.FileInfo }
-
-func (f fakeNoSysInfo) Sys() any { return nil }
-
-func TestVerifyConfigTrust_Ownership(t *testing.T) {
-	path := writeConfigWithMode(t, minimalConfig, 0o600)
-	fi, err := os.Stat(path)
-	require.NoError(t, err)
-
-	t.Run("file owned by another uid rejected", func(t *testing.T) {
-		other := uint32(os.Getuid() + 1) //nolint:gosec // test uid arithmetic
-		err := verifyConfigTrust(fakeOwnerInfo{fi, other}, os.Getuid(), path)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "owned by uid")
-		assert.Contains(t, err.Error(), "another user controls")
-	})
-
-	t.Run("file owned by running user accepted", func(t *testing.T) {
-		err := verifyConfigTrust(fi, os.Getuid(), path)
-		assert.NoError(t, err)
-	})
-
-	t.Run("unknown stat shape rejected, not skipped", func(t *testing.T) {
-		err := verifyConfigTrust(fakeNoSysInfo{fi}, os.Getuid(), path)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot determine file owner")
-	})
-
-	t.Run("non-regular file rejected", func(t *testing.T) {
-		dirInfo, err := os.Stat(t.TempDir())
-		require.NoError(t, err)
-		err = verifyConfigTrust(dirInfo, os.Getuid(), "somedir")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not a regular file")
 	})
 }

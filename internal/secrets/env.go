@@ -18,12 +18,15 @@ func NewEnvProvider() *EnvProvider {
 // Fetch retrieves a secret from an environment variable.
 //
 // The path parameter is the name of the environment variable:
-//   - "MY_API_KEY" → reads os.Getenv("MY_API_KEY")
-//   - "SECRET_TOKEN" → reads os.Getenv("SECRET_TOKEN")
+//   - "MY_API_KEY" → reads the MY_API_KEY environment variable
+//   - "SECRET_TOKEN" → reads the SECRET_TOKEN environment variable
 //
 // Returns:
-//   - ErrSecretNotFound if the environment variable is not set or empty
+//   - ErrSecretNotFound if the environment variable is not set
 //   - Error if path is empty
+//
+// Returns the variable's value verbatim; Registry.Fetch owns whitespace
+// normalization and empty-value rejection for every provider.
 //
 // Respects context cancellation.
 func (p *EnvProvider) Fetch(ctx context.Context, path string) (string, error) {
@@ -38,8 +41,8 @@ func (p *EnvProvider) Fetch(ctx context.Context, path string) (string, error) {
 		return "", fmt.Errorf("empty environment variable name")
 	}
 
-	value := os.Getenv(path)
-	if value == "" {
+	value, ok := os.LookupEnv(path)
+	if !ok {
 		return "", ErrSecretNotFound
 	}
 

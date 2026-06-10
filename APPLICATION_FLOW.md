@@ -72,7 +72,10 @@ svc, err := run.PrepareRunConfig(cfg, serviceName, cliCommand)
 user could have written — group/world-writable mode, ownership by a different
 uid, or a non-regular file all fail loudly (with the `chmod`/`chown` fix in the
 message) before any `credential_ref` is read. The check stats the open file
-handle, so the verified file is the parsed file.
+handle, so the verified file is the parsed file. The trust decision lives in
+`internal/filetrust` and is shared with the `file:` secret provider, which
+applies the stricter owner-only bar (no group/world *read* either) because a
+secret file holds the credential value itself, not just references.
 
 #### 3. Ephemeral CA Initialization (lines 124-128)
 

@@ -87,10 +87,14 @@ The request pipeline is split into one file per concern. `handlers.go` is now on
 - `internal/auth/registry.go` - Strategy registry (register/lookup strategies)
 
 ## Secrets Management
-- `internal/secrets/registry.go` - Secret provider registry, `Fetch()`, preloading
-- `internal/secrets/env.go` - Environment variable provider (`env:VAR_NAME`)
-- `internal/secrets/file.go` - File provider (`file:/path/to/secret`)
+- `internal/secrets/registry.go` - Secret provider registry, `Fetch()`, preloading. `Registry.Fetch` is the SINGLE normalizer for fetched values: trims surrounding whitespace (a trailing newline is transport convention, not part of the secret) and rejects empty-after-trim as `ErrSecretNotFound`. Providers return values verbatim and detect only their own source's absence semantics.
+- `internal/secrets/env.go` - Environment variable provider (`env:VAR_NAME`); unset (via `LookupEnv`) = not found
+- `internal/secrets/file.go` - File provider (`file:/path/to/secret`). Gated by `internal/filetrust` with the `OwnerOnly` bar: any group/world permission bit (read included), foreign-uid ownership, or a non-regular file is a loud refusal; a symlinked path is judged by the target actually read (fstat on the open handle, no TOCTOU)
 - `internal/secrets/keychain.go` - macOS Keychain provider (`keychain:service/account`)
+- `internal/secrets/errors.go` - `ErrSecretNotFound` is an ALIAS of `internal/errors.ErrSecretNotFound` (one identity, so `errors.Is` matches across both names)
+
+## File Trust (shared)
+- `internal/filetrust/filetrust.go` - The one file-trust decision for the codebase (never hand-roll a second mode/owner check). `File{Desc, Stakes, Bar}.Verify(fi, uid, path)` is pure over (FileInfo, uid); `ReadFile` owns the open → fstat-handle → verify → read sequence so the inode that passed verification is the inode read. Two canonical bars: `NoUntrustedWrites` (perm&0o022 — config: integrity matters, contents are refs) and `OwnerOnly` (perm&0o077 — secret files / private keys: contents ARE the value). Consumers: `config.Load`, the `file:` secret provider; CA-key loading (3at.9) should consume it too.
 
 ## Service Configuration
 - `internal/service/types.go` - `Service` struct (host pattern, auth strategy, policy)
@@ -305,7 +309,7 @@ Go version: see `go.mod` (currently `go 1.25.4`).
 
 **Configuration Management:**
 - Default paths: `-c` flag → `~/.config/chaperone/chaperone.toml`. Config is NEVER read from the CWD (a hostile repo could point a real credential at an attacker host); a project-local config requires explicit `-c ./chaperone.toml`. `getConfigPath` (cmd/chaperone/cmd/root.go) is the single trust boundary — all modes (inject/run/examine/check) resolve through it
-- File trust gate: `config.Load` rejects (loud error, no fallback) a config that is group/world-writable, owned by a different uid, or not a regular file — BEFORE any `credential_ref` is parsed. The check fstat's the open handle (no check-then-use race) and lives only in `Load` (`verifyConfigTrust`, internal/config/config.go), so every mode is covered by construction
+- File trust gate: `config.Load` rejects (loud error, no fallback) a config that is group/world-writable, owned by a different uid, or not a regular file — BEFORE any `credential_ref` is parsed. The check fstat's the open handle (no check-then-use race) and is the shared `internal/filetrust` decision (`configTrust` with the `NoUntrustedWrites` bar) applied only in `Load`, so every mode is covered by construction
 - TOML format with validation
 - Service registry preloaded on startup
 - All secrets validated at startup (preloading catches config errors early)
@@ -344,6 +348,7 @@ The codebase is organized by responsibility, not by layer:
 | `internal/secrets/` | Secret providers (env, file, keychain) |
 | `internal/service/` | Service registry, policy, host matching |
 | `internal/config/` | Configuration parsing and validation (incl. `GrantableConfig`) |
+| `internal/filetrust/` | Shared file-trust decision (mode/owner/symlink-target) for config and secret files |
 | `internal/grant/` | Grant enforcer — single authority for what is grantable |
 | `internal/control/` | Daemon control plane (grant/revoke/list over unix socket) |
 | `internal/mcpgrants/` | stdio MCP server — agent-facing grant tools (thin control-plane client) |

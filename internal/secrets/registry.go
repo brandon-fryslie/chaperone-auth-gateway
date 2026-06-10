@@ -40,10 +40,19 @@ func (r *Registry) Register(name string, provider SecretProvider) {
 //
 // Secrets are cached in memory after the first fetch to avoid repeated lookups.
 //
+// Every fetched value is normalized here, at the one boundary all fetches
+// cross: surrounding whitespace is trimmed (a printf'd file or the security
+// tool's output carries a trailing newline that is transport convention, not
+// part of the secret) and a value that is empty after trimming is
+// ErrSecretNotFound — injecting an empty credential would silently produce
+// unauthenticated requests. [LAW:single-enforcer] providers return values
+// verbatim and carry no copy of this rule.
+//
 // Returns an error if:
 //   - The ref format is invalid (missing colon)
 //   - The provider is not registered
 //   - The provider fails to fetch the secret
+//   - The fetched value is empty after trimming whitespace
 func (r *Registry) Fetch(ctx context.Context, ref string) (string, error) {
 	if ref == "" {
 		return "", fmt.Errorf("empty secret reference")
@@ -83,6 +92,11 @@ func (r *Registry) Fetch(ctx context.Context, ref string) (string, error) {
 	secret, err := provider.Fetch(ctx, path)
 	if err != nil {
 		return "", err
+	}
+
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return "", fmt.Errorf("secret %s resolved to an empty value: %w", ref, ErrSecretNotFound)
 	}
 
 	// Cache the secret for future use

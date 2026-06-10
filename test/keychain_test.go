@@ -242,9 +242,12 @@ func testKeychainFetchExisting(t *testing.T) {
 	cleanup := addKeychainItem(t, service, account, password)
 	defer cleanup()
 
-	// Fetch from keychain using provider
-	provider := secrets.NewKeychainProvider()
-	secret, err := provider.Fetch(context.Background(), service+"/"+account)
+	// Fetch through the registry — the production path — since the provider
+	// returns the security tool's output verbatim and Registry.Fetch owns
+	// normalization.
+	registry := secrets.NewRegistry()
+	registry.Register("keychain", secrets.NewKeychainProvider())
+	secret, err := registry.Fetch(context.Background(), "keychain:"+service+"/"+account)
 	require.NoError(t, err)
 	assert.Equal(t, password, secret)
 }
@@ -266,6 +269,10 @@ func testKeychainWhitespaceTrimmed(t *testing.T) {
 	// Gaming Resistance:
 	// - Creates REAL keychain item with trailing newline (security command adds it)
 	// - Verifies actual whitespace trimming
+	//
+	// Trimming is the registry's job (the provider returns the security
+	// tool's output verbatim), so the fetch goes through Registry.Fetch —
+	// the same path the proxy uses.
 
 	// Create a test keychain item
 	service := "chaperone-test-whitespace"
@@ -276,9 +283,9 @@ func testKeychainWhitespaceTrimmed(t *testing.T) {
 	cleanup := addKeychainItem(t, service, account, password)
 	defer cleanup()
 
-	// Fetch from keychain - should trim any whitespace added by security command
-	provider := secrets.NewKeychainProvider()
-	secret, err := provider.Fetch(context.Background(), service+"/"+account)
+	registry := secrets.NewRegistry()
+	registry.Register("keychain", secrets.NewKeychainProvider())
+	secret, err := registry.Fetch(context.Background(), "keychain:"+service+"/"+account)
 	require.NoError(t, err)
 	assert.Equal(t, password, secret)
 	assert.NotContains(t, secret, "\n")
