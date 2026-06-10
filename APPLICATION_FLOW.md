@@ -68,6 +68,12 @@ svc, err := run.PrepareRunConfig(cfg, serviceName, cliCommand)
 
 **Key Point:** CLI commands override config file settings. Variable expansion happens here (e.g., `${HOME}` → actual path).
 
+**File trust gate:** `config.Load` refuses to parse a config that another local
+user could have written — group/world-writable mode, ownership by a different
+uid, or a non-regular file all fail loudly (with the `chmod`/`chown` fix in the
+message) before any `credential_ref` is read. The check stats the open file
+handle, so the verified file is the parsed file.
+
 #### 3. Ephemeral CA Initialization (lines 124-128)
 
 ```go

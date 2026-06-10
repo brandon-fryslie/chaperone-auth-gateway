@@ -305,6 +305,7 @@ Go version: see `go.mod` (currently `go 1.25.4`).
 
 **Configuration Management:**
 - Default paths: `-c` flag → `~/.config/chaperone/chaperone.toml`. Config is NEVER read from the CWD (a hostile repo could point a real credential at an attacker host); a project-local config requires explicit `-c ./chaperone.toml`. `getConfigPath` (cmd/chaperone/cmd/root.go) is the single trust boundary — all modes (inject/run/examine/check) resolve through it
+- File trust gate: `config.Load` rejects (loud error, no fallback) a config that is group/world-writable, owned by a different uid, or not a regular file — BEFORE any `credential_ref` is parsed. The check fstat's the open handle (no check-then-use race) and lives only in `Load` (`verifyConfigTrust`, internal/config/config.go), so every mode is covered by construction
 - TOML format with validation
 - Service registry preloaded on startup
 - All secrets validated at startup (preloading catches config errors early)

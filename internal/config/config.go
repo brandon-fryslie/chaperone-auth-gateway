@@ -3,8 +3,10 @@ package config
 import (
 	"crypto/x509"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/BurntSushi/toml"
 
@@ -92,8 +94,30 @@ type AuditConfig struct {
 }
 
 // Load reads and parses a TOML configuration file.
+//
+// The file is trusted only after verifyConfigTrust accepts it: the config
+// decides which secrets are fetched and which hosts receive them, so a file
+// another local user could have written must never reach the parser.
+// [LAW:single-enforcer] every mode (inject/run/examine/check) loads config
+// through this one function, so the trust gate here covers them all.
+// The check stats the open handle, not the path, so the inode that passed
+// verification is the inode that gets parsed (no check-then-use race).
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // Path is user-provided config file
+	f, err := os.Open(path) //nolint:gosec // Path is user-provided config file
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat config file: %w", err)
+	}
+	if err := verifyConfigTrust(fi, os.Getuid(), path); err != nil {
+		return nil, err
+	}
+
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
@@ -104,6 +128,32 @@ func Load(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// verifyConfigTrust rejects a config file that anyone other than the running
+// user could have written: a non-regular file, group/world-writable mode, or
+// ownership by a different uid. A pure decision over (FileInfo, uid) so the
+// ownership branch is testable without root. [LAW:effects-at-boundaries]
+// [LAW:no-silent-failure] rejection is a hard error carrying the remediation
+// — never a warning, never a fallback to defaults.
+func verifyConfigTrust(fi os.FileInfo, uid int, path string) error {
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("config file %s is not a regular file (mode %s); refusing to load", path, fi.Mode())
+	}
+	if perm := fi.Mode().Perm(); perm&0o022 != 0 {
+		return fmt.Errorf("config file %s is writable by group or others (mode %04o): anyone who can edit it controls which credentials are fetched and where they are sent — fix with: chmod go-w %s", path, perm, path)
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		// Only darwin/linux are supported targets; an unknown stat shape means
+		// ownership cannot be proven, and unprovable trust is a refusal, not a
+		// pass. [LAW:no-silent-failure]
+		return fmt.Errorf("config file %s: cannot determine file owner on this platform; refusing to load", path)
+	}
+	if int(st.Uid) != uid {
+		return fmt.Errorf("config file %s is owned by uid %d but chaperone is running as uid %d: refusing to load a config another user controls — fix with: chown %d %s", path, st.Uid, uid, uid, path)
+	}
+	return nil
 }
 
 // UpstreamCAPool loads the pinned upstream trust anchors named by
