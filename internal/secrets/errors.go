@@ -1,8 +1,10 @@
 package secrets
 
 import (
-	"fmt"
+	cherrors "github.com/bmf/chaperone/internal/errors"
 )
 
-// ErrSecretNotFound is returned when a secret cannot be found in its source.
-var ErrSecretNotFound = fmt.Errorf("secret not found")
+// ErrSecretNotFound is an alias for the canonical sentinel in internal/errors
+// — the same value, not a second sentinel — so errors.Is matches no matter
+// which package name a caller reaches it through. [LAW:one-source-of-truth]
+var ErrSecretNotFound = cherrors.ErrSecretNotFound

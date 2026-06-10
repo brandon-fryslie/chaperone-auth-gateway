@@ -42,6 +42,10 @@ func NewKeychainProvider() *KeychainProvider {
 //   - Error if path format is invalid (must be "service/account")
 //   - Error if keychain access is denied
 //
+// Returns the security tool's output verbatim (including the trailing
+// newline it appends); Registry.Fetch owns whitespace normalization and
+// empty-value rejection for every provider.
+//
 // Respects context cancellation by checking ctx.Done() before retrieval.
 func (p *KeychainProvider) Fetch(ctx context.Context, path string) (string, error) {
 	// Check context cancellation
@@ -84,15 +88,7 @@ func (p *KeychainProvider) Fetch(ctx context.Context, path string) (string, erro
 		return "", fmt.Errorf("failed to fetch from keychain: %w (output: %s)", err, strings.TrimSpace(outputStr))
 	}
 
-	// Trim whitespace from password
-	password := strings.TrimSpace(string(output))
-
-	// Empty passwords are treated as not found
-	if password == "" {
-		return "", errors.ErrSecretNotFound
-	}
-
-	return password, nil
+	return string(output), nil
 }
 
 // parseKeychainPath parses "service/account" format into service and account components.
