@@ -93,6 +93,22 @@ func (r *Registry) Fetch(ctx context.Context, ref string) (string, error) {
 	return secret, nil
 }
 
+// ResolvedValues returns a snapshot of every secret value this registry has
+// resolved so far. It exists so the recording redactor can scrub the values
+// the process actually holds — including credentials first fetched for a
+// runtime grant — without a second store of secrets ever being minted.
+// [LAW:one-source-of-truth]
+func (r *Registry) ResolvedValues() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	values := make([]string, 0, len(r.cache))
+	for _, v := range r.cache {
+		values = append(values, v)
+	}
+	return values
+}
+
 // HasProvider checks if a secret provider is registered.
 func (r *Registry) HasProvider(name string) bool {
 	r.mu.RLock()
