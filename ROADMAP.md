@@ -67,5 +67,7 @@
 - [ ] **Single-service instances**
   Each instance handles one service. Simplifies config, limits blast radius.
 
-- [ ] **Project-local config**
-  `.chaperone.toml` in project directory instead of global config.
+- [x] ~~**Project-local config**~~ — rejected for security (2026-06-10)
+  Auto-loading config from the CWD lets a hostile repo point a real credential
+  at an attacker host. Project-local config is supported only via explicit
+  opt-in: `chaperone run -c ./chaperone.toml`.

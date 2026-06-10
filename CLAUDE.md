@@ -304,7 +304,7 @@ Go version: see `go.mod` (currently `go 1.25.4`).
 - Audit logging for security events via `internal/audit/logger.go` (JSON format)
 
 **Configuration Management:**
-- Default paths: `-c` flag → `~/.config/chaperone/chaperone.toml` → `./chaperone.toml`
+- Default paths: `-c` flag → `~/.config/chaperone/chaperone.toml`. Config is NEVER read from the CWD (a hostile repo could point a real credential at an attacker host); a project-local config requires explicit `-c ./chaperone.toml`. `getConfigPath` (cmd/chaperone/cmd/root.go) is the single trust boundary — all modes (inject/run/examine/check) resolve through it
 - TOML format with validation
 - Service registry preloaded on startup
 - All secrets validated at startup (preloading catches config errors early)

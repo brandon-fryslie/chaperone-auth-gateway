@@ -52,15 +52,20 @@ func init() {
 // getConfigPath resolves the config file path using the following precedence:
 // 1. Explicit -c/--config flag
 // 2. ~/.config/chaperone/chaperone.toml
-// 3. ./chaperone.toml (current directory)
 // Returns an error if no config file is found.
+//
+// [LAW:single-enforcer] This is the one trust boundary for configuration: config
+// can name a credential_ref pointing at the operator's real secrets, so it is
+// loaded only from sources the operator controls — a path they typed (-c) or
+// their own home directory. The current working directory is deliberately NOT
+// consulted: a hostile repository could otherwise plant a config that routes a
+// real secret to an attacker-controlled host. A project-local file is still
+// usable via the explicit opt-in: `-c ./chaperone.toml`.
 func getConfigPath() (string, error) {
-	// 1. Check explicit flag
 	if cfgFile != "" {
 		return cfgFile, nil
 	}
 
-	// 2. Check default path ~/.config/chaperone/chaperone.toml
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		defaultPath := filepath.Join(homeDir, ".config", "chaperone", "chaperone.toml")
@@ -69,12 +74,7 @@ func getConfigPath() (string, error) {
 		}
 	}
 
-	// 3. Check current directory for chaperone.toml
-	if _, err := os.Stat("chaperone.toml"); err == nil {
-		return "chaperone.toml", nil
-	}
-
-	return "", fmt.Errorf("no config file found (checked -c flag, ~/.config/chaperone/chaperone.toml, ./chaperone.toml)")
+	return "", fmt.Errorf("no config file found (checked -c flag and ~/.config/chaperone/chaperone.toml; config in the current directory is not loaded automatically — pass it explicitly with -c ./chaperone.toml)")
 }
 
 // getCAPath returns the CA directory and file paths.

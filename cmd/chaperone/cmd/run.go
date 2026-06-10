@@ -76,8 +76,14 @@ func runWithProxy(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid syntax: extra arguments must be preceded by '--' separator (usage: chaperone run <service> -- <command> <arg1> ...)")
 	}
 
-	// Load and merge configs (user + project)
-	cfg, err := config.LoadWithMerge()
+	// [LAW:single-enforcer] same trusted-source resolution as every other mode
+	// (-c flag or user config dir; CWD config is never loaded — see getConfigPath).
+	// This also makes the documented -c flag actually effective in run mode.
+	configPath, err := getConfigPath()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}

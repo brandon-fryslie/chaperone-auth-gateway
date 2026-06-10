@@ -963,7 +963,11 @@ chaperone run  # Same as: chaperone inject
 **Config file resolution:**
 1. `-c` flag path
 2. `~/.config/chaperone/chaperone.toml`
-3. `./chaperone.toml` (current directory)
+
+Config is never loaded from the current working directory automatically: a config
+file can point a real credential at any host, so a hostile repository must not be
+able to contribute one just because you `cd` into it. To use a project-local
+config, opt in explicitly: `chaperone run -c ./chaperone.toml ...`
 
 ## How It Works
 
