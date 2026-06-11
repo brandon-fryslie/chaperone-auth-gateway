@@ -38,15 +38,27 @@ func (c *captureLogger) Log(e audit.Entry) error {
 }
 func (c *captureLogger) Close() error { return nil }
 
-func (c *captureLogger) has(event string) bool {
+func (c *captureLogger) entry(event string) (audit.Entry, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for _, e := range c.entries {
 		if e.Event == event {
-			return true
+			return e, true
 		}
 	}
-	return false
+	return audit.Entry{}, false
+}
+
+// requireAttributed asserts the audit entry for event exists and is attributed
+// to THIS process by kernel-attested uid/pid — values that can only be present
+// if the real peer-credential syscall ran on the real socket connection.
+func requireAttributed(t *testing.T, log *captureLogger, event string) {
+	t.Helper()
+	e, ok := log.entry(event)
+	require.True(t, ok, "event %s must be audited", event)
+	require.NotNil(t, e.Caller, "event %s must carry the attested caller", event)
+	assert.Equal(t, os.Geteuid(), e.Caller.UID, "caller uid must be the connecting process's euid")
+	assert.Equal(t, os.Getpid(), e.Caller.PID, "caller pid must be the connecting process's pid")
 }
 
 // secretValue is what the credential_ref WOULD resolve to. It must never appear
@@ -134,7 +146,7 @@ func TestGrantWithinUniverseBecomesInjectionEligible(t *testing.T) {
 	assert.Equal(t, []string{"GET"}, svc.Policy.AllowedMethods) // narrowed scope stored
 	assert.Equal(t, []string{"/v1/chat/completions"}, svc.Policy.AllowedPaths)
 
-	assert.True(t, log.has(audit.EventGrantApplied), "grant must be audited")
+	requireAttributed(t, log, audit.EventGrantApplied)
 }
 
 func TestGrantOutsideUniverseRefused(t *testing.T) {
@@ -149,7 +161,7 @@ func TestGrantOutsideUniverseRefused(t *testing.T) {
 
 	_, lookupErr := reg.Lookup("api.evil.com")
 	assert.Error(t, lookupErr, "refused grant must not become eligible")
-	assert.True(t, log.has(audit.EventGrantRejected), "rejection must be audited")
+	requireAttributed(t, log, audit.EventGrantRejected)
 }
 
 func TestGrantWideningScopeRefused(t *testing.T) {
@@ -179,7 +191,7 @@ func TestRevokeRemovesEligibilityAndIsIdempotent(t *testing.T) {
 	assert.True(t, rev.Revoked, "a present grant reports revoked=true")
 	_, lookupErr := reg.Lookup("api.openai.com")
 	assert.Error(t, lookupErr, "revoke must remove eligibility")
-	assert.True(t, log.has(audit.EventGrantRevoked), "revoke must be audited")
+	requireAttributed(t, log, audit.EventGrantRevoked)
 
 	// Revoking again is a soft success (idempotent DELETE-style), not an error.
 	rev2, err := client.Revoke(ctx, control.RevokeRequest{HostPattern: "api.openai.com"})

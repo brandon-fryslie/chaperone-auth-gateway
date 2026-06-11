@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -95,6 +97,7 @@ type grantDaemon struct {
 	client      *http.Client
 	upstreamURL string
 	auditPath   string
+	socketPath  string
 	obs         *upstreamObservation
 }
 
@@ -208,6 +211,7 @@ func newGrantDaemon(t *testing.T, grantable []config.GrantableConfig) *grantDaem
 		client:      client,
 		upstreamURL: upstream.URL,
 		auditPath:   auditPath,
+		socketPath:  socketPath,
 		obs:         obs,
 	}
 }
@@ -393,6 +397,59 @@ func TestRevokeStopsInjection(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status)
 	assert.True(t, after.called)
 	assert.Empty(t, after.auth, "after revoke the upstream must receive NO injected credential")
+}
+
+// TestControlSocketOwnerOnlyAndAttributedAudit (3at.8): through the REAL daemon
+// assembly (orchestrate.StartControlPlane), with the most permissive umask the
+// daemon could inherit, the control socket is owner-only — and every grant
+// lifecycle event in the audit file is attributed to the connecting process by
+// kernel-attested uid/pid, not the old "unix-socket" constant alone. The caller
+// here is this test process itself, so the expected identity is exact.
+func TestControlSocketOwnerOnlyAndAttributedAudit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+	oldMask := syscall.Umask(0)
+	defer syscall.Umask(oldMask)
+
+	d := newGrantDaemon(t, bearerPairing())
+
+	fi, err := os.Stat(d.socketPath)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), fi.Mode().Perm(),
+		"control socket must be owner-only even under a fully permissive umask")
+
+	res := d.grant(map[string]any{
+		"credential_ref":  "env:" + grantEnvVar,
+		"auth_strategy":   "bearer",
+		"allowed_methods": []string{"GET", "POST"},
+		"allowed_paths":   []string{"/v1/*"},
+	})
+	require.False(t, res.IsError, "grant must succeed: %s", textOfResult(t, res))
+	revRes := d.revoke()
+	require.False(t, revRes.IsError)
+
+	events := map[string]bool{audit.EventGrantApplied: false, audit.EventGrantRevoked: false}
+	for _, line := range strings.Split(strings.TrimSpace(d.readAudit()), "\n") {
+		var e struct {
+			Event  string `json:"event"`
+			Caller *struct {
+				UID int `json:"uid"`
+				PID int `json:"pid"`
+			} `json:"caller"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(line), &e), "audit line must be valid JSON: %s", line)
+		if _, tracked := events[e.Event]; !tracked {
+			continue
+		}
+		events[e.Event] = true
+		require.NotNil(t, e.Caller, "%s must carry the attested caller", e.Event)
+		assert.Equal(t, os.Geteuid(), e.Caller.UID, "%s caller uid", e.Event)
+		assert.Equal(t, os.Getpid(), e.Caller.PID, "%s caller pid", e.Event)
+	}
+	for event, seen := range events {
+		assert.True(t, seen, "expected %s in the audit trail", event)
+	}
 }
 
 // TestNoSecretCrossesTheGrantBoundary: across a full grant+inject cycle, the secret
